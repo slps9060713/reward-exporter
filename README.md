@@ -82,8 +82,6 @@ reward-exporter-main/
 │   ├── index.html          # 主頁面
 │   ├── style.css           # 樣式表
 │   ├── app.js              # JavaScript 邏輯
-│   ├── README.md           # 詳細說明
-│   └── DEPLOYMENT.md       # 部署指南
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml      # 自動部署設定
