@@ -60,6 +60,16 @@ const customSoundSection = document.getElementById('customSoundSection');
 const uploadSpin = document.getElementById('uploadSpin');
 const uploadReveal = document.getElementById('uploadReveal');
 const uploadWinner = document.getElementById('uploadWinner');
+const devTrigger = document.getElementById('devTrigger');
+const devTokenPanel = document.getElementById('devTokenPanel');
+const closeDevPanel = document.getElementById('closeDevPanel');
+const devTokenInput = document.getElementById('devTokenInput');
+const devTokenLoginBtn = document.getElementById('devTokenLoginBtn');
+const shareTokenBtn = document.getElementById('shareTokenBtn');
+const shareTokenOverlay = document.getElementById('shareTokenOverlay');
+const closeShareTokenBtn = document.getElementById('closeShareTokenBtn');
+const displayToken = document.getElementById('displayToken');
+const copyTokenBtn = document.getElementById('copyTokenBtn');
 
 // 初始化
 function init() {
@@ -92,6 +102,28 @@ function setupEventListeners() {
     uploadSpin.addEventListener('change', (e) => handleFileUpload(e, 'spin'));
     uploadReveal.addEventListener('change', (e) => handleFileUpload(e, 'reveal'));
     uploadWinner.addEventListener('change', (e) => handleFileUpload(e, 'winner'));
+    
+    // 開發者模式
+    devTrigger.addEventListener('click', showDevTokenPanel);
+    closeDevPanel.addEventListener('click', hideDevTokenPanel);
+    devTokenLoginBtn.addEventListener('click', handleDevTokenLogin);
+    // 點擊面板背景關閉
+    devTokenPanel.addEventListener('click', (e) => {
+        if (e.target === devTokenPanel) {
+            hideDevTokenPanel();
+        }
+    });
+    
+    // Token 分享
+    shareTokenBtn.addEventListener('click', showShareTokenOverlay);
+    closeShareTokenBtn.addEventListener('click', hideShareTokenOverlay);
+    copyTokenBtn.addEventListener('click', copyTokenToClipboard);
+    // 點擊面板背景關閉
+    shareTokenOverlay.addEventListener('click', (e) => {
+        if (e.target === shareTokenOverlay) {
+            hideShareTokenOverlay();
+        }
+    });
 }
 
 // 切換到未登入模式
@@ -236,6 +268,137 @@ function handleLogout() {
     allTabs = [];
     localStorage.removeItem('twitch_token');
     showLoginPage();
+}
+
+// 顯示開發者 Token 輸入面板
+function showDevTokenPanel() {
+    devTokenPanel.style.display = 'flex';
+    devTokenInput.value = ''; // 清空輸入框
+    devTokenInput.focus();
+}
+
+// 隱藏開發者 Token 輸入面板
+function hideDevTokenPanel() {
+    devTokenPanel.style.display = 'none';
+    devTokenInput.value = '';
+}
+
+// 處理開發者 Token 登入
+async function handleDevTokenLogin() {
+    const token = devTokenInput.value.trim();
+    
+    if (!token) {
+        alert('請輸入 OAuth Token');
+        return;
+    }
+    
+    // 驗證 Token 格式（基本檢查）
+    if (token.length < 20) {
+        alert('Token 格式不正確，請檢查後重試');
+        return;
+    }
+    
+    // 保存 Token
+    currentToken = token;
+    localStorage.setItem('twitch_token', token);
+    
+    // 隱藏面板
+    hideDevTokenPanel();
+    
+    // 顯示載入中
+    showLoading();
+    
+    try {
+        // 驗證 Token 並載入用戶資料
+        const userResponse = await fetch('https://api.twitch.tv/helix/users', {
+            headers: {
+                'Authorization': `Bearer ${currentToken}`,
+                'Client-Id': APP_CLIENT_ID || 'your_client_id_here'
+            }
+        });
+        
+        if (!userResponse.ok) {
+            throw new Error('Token 驗證失敗');
+        }
+        
+        const userData = await userResponse.json();
+        if (userData.data && userData.data.length > 0) {
+            currentBroadcasterId = userData.data[0].id;
+            userName.textContent = userData.data[0].display_name;
+            
+            // 顯示主頁面
+            showMainPage();
+            
+            // 載入獎勵
+            loadRewards();
+        } else {
+            throw new Error('無法取得用戶資料');
+        }
+    } catch (error) {
+        console.error('開發者 Token 登入失敗:', error);
+        alert('登入失敗：' + error.message + '\n請確認 Token 是否有效');
+        currentToken = null;
+        localStorage.removeItem('twitch_token');
+        showLoginPage();
+    }
+}
+
+// 顯示 Token 分享面板
+function showShareTokenOverlay() {
+    if (!currentToken) {
+        alert('❌ 尚未登入，無法取得 Token');
+        return;
+    }
+    
+    // 顯示當前的 Token
+    displayToken.textContent = currentToken;
+    shareTokenOverlay.style.display = 'flex';
+}
+
+// 隱藏 Token 分享面板
+function hideShareTokenOverlay() {
+    shareTokenOverlay.style.display = 'none';
+    displayToken.textContent = '';
+}
+
+// 複製 Token 到剪貼板
+async function copyTokenToClipboard() {
+    try {
+        await navigator.clipboard.writeText(currentToken);
+        
+        // 暫時變更按鈕文字提示複製成功
+        const originalHTML = copyTokenBtn.innerHTML;
+        copyTokenBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            已複製！
+        `;
+        copyTokenBtn.style.background = 'var(--success-color)';
+        
+        // 2 秒後恢復原狀
+        setTimeout(() => {
+            copyTokenBtn.innerHTML = originalHTML;
+            copyTokenBtn.style.background = '';
+        }, 2000);
+        
+    } catch (error) {
+        console.error('複製失敗:', error);
+        // 如果瀏覽器不支援 clipboard API，使用舊方法
+        const textArea = document.createElement('textarea');
+        textArea.value = currentToken;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            alert('✅ Token 已複製到剪貼板');
+        } catch (err) {
+            alert('❌ 複製失敗，請手動選取並複製');
+        }
+        document.body.removeChild(textArea);
+    }
 }
 
 // 載入獎勵資料
