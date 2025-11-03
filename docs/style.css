@@ -794,11 +794,12 @@ tbody tr:hover {
     transition: all 0.3s ease;
 }
 
-.id-item.eliminated {
+/* 已移除刪除線功能 */
+/* .id-item.eliminated {
     opacity: 0.3;
     text-decoration: line-through;
     background: var(--secondary-color);
-}
+} */
 
 .id-item.winner {
     background: var(--success-color);
@@ -1638,5 +1639,227 @@ tbody tr:hover {
 
 .share-warning li:last-child {
     margin-bottom: 0;
+}
+
+/* 右側中獎列表面板 */
+.winners-sidebar {
+    position: fixed;
+    right: 0;
+    top: 0;
+    height: 100vh;
+    width: 320px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border-left: 2px solid var(--border-color);
+    box-shadow: -5px 0 20px rgba(0, 0, 0, 0.3);
+    transition: transform 0.3s ease;
+    z-index: 900;
+    display: none; /* 預設隱藏，僅登入模式顯示 */
+    flex-direction: column;
+}
+
+.winners-sidebar.collapsed {
+    transform: translateX(100%);
+}
+
+.toggle-sidebar-btn {
+    position: absolute;
+    left: -40px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 40px;
+    height: 80px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, #7b2cbf 100%);
+    border: none;
+    border-radius: 8px 0 0 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    box-shadow: -3px 0 10px rgba(138, 43, 226, 0.3);
+}
+
+.toggle-sidebar-btn:hover {
+    background: linear-gradient(135deg, #7b2cbf 0%, var(--primary-color) 100%);
+    box-shadow: -3px 0 15px rgba(138, 43, 226, 0.5);
+}
+
+.toggle-icon {
+    color: white;
+    font-size: 1.2rem;
+    transition: transform 0.3s ease;
+}
+
+.winners-sidebar.collapsed .toggle-icon {
+    transform: rotate(180deg);
+}
+
+.sidebar-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 2rem 1.5rem;
+    overflow: hidden;
+}
+
+.sidebar-content h3 {
+    margin: 0 0 1.5rem 0;
+    color: var(--primary-color);
+    font-size: 1.3rem;
+    text-align: center;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.winners-list-sidebar {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+    padding-right: 0.5rem;
+}
+
+/* 自定義捲軸 */
+.winners-list-sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.winners-list-sidebar::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+}
+
+.winners-list-sidebar::-webkit-scrollbar-thumb {
+    background: var(--primary-color);
+    border-radius: 3px;
+}
+
+.winners-list-sidebar::-webkit-scrollbar-thumb:hover {
+    background: #7b2cbf;
+}
+
+.empty-message {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 2rem 1rem;
+    font-style: italic;
+}
+
+.winner-entry {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.winner-entry:hover {
+    background: rgba(0, 0, 0, 0.5);
+    border-color: var(--primary-color);
+    transform: translateX(-3px);
+}
+
+.winner-entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.reward-name {
+    color: var(--primary-color);
+    font-weight: 600;
+    font-size: 0.9rem;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.remove-winner-btn {
+    opacity: 0;
+    background: var(--error-color);
+    border: none;
+    color: white;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    margin-left: 0.5rem;
+}
+
+.winner-entry:hover .remove-winner-btn {
+    opacity: 1;
+}
+
+.remove-winner-btn:hover {
+    background: #d32f2f;
+    transform: scale(1.1);
+}
+
+.winner-user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.winner-user-id {
+    color: var(--success-color);
+    font-weight: 600;
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.winner-user-name {
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, var(--error-color) 0%, #d32f2f 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-danger:hover {
+    background: linear-gradient(135deg, #d32f2f 0%, var(--error-color) 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(244, 67, 54, 0.3);
+}
+
+.btn-danger:active {
+    transform: translateY(0);
+}
+
+.btn-full {
+    width: 100%;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+    .winners-sidebar {
+        width: 280px;
+    }
+    
+    .toggle-sidebar-btn {
+        left: -35px;
+        width: 35px;
+        height: 70px;
+    }
 }
 

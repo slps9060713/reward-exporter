@@ -70,6 +70,13 @@ const shareTokenOverlay = document.getElementById('shareTokenOverlay');
 const closeShareTokenBtn = document.getElementById('closeShareTokenBtn');
 const displayToken = document.getElementById('displayToken');
 const copyTokenBtn = document.getElementById('copyTokenBtn');
+const winnersSidebar = document.getElementById('winnersSidebar');
+const toggleSidebar = document.getElementById('toggleSidebar');
+const winnersList = document.getElementById('winnersList');
+const clearAllWinners = document.getElementById('clearAllWinners');
+
+// 中獎紀錄（用於右側列表）
+let winnersRecord = [];
 
 // 初始化
 function init() {
@@ -124,6 +131,10 @@ function setupEventListeners() {
             hideShareTokenOverlay();
         }
     });
+    
+    // 右側中獎列表
+    toggleSidebar.addEventListener('click', toggleWinnersSidebar);
+    clearAllWinners.addEventListener('click', handleClearAllWinners);
 }
 
 // 切換到未登入模式
@@ -210,6 +221,10 @@ function handleStartGuest() {
     loginPage.classList.remove('active');
     mainPage.classList.add('active');
     userName.textContent = '未登入模式';
+    
+    // 隱藏右側中獎列表（未登入模式不需要）
+    winnersSidebar.style.display = 'none';
+    
     createCustomTab();
 }
 
@@ -250,6 +265,12 @@ function showLoginPage() {
 function showMainPage() {
     loginPage.classList.remove('active');
     mainPage.classList.add('active');
+    
+    // 顯示右側中獎列表（僅登入模式）
+    if (currentToken) {
+        winnersSidebar.style.display = 'flex';
+    }
+    
     loadRewards();
 }
 
@@ -267,6 +288,12 @@ function handleLogout() {
     currentRewards = [];
     allTabs = [];
     localStorage.removeItem('twitch_token');
+    
+    // 隱藏並清空右側中獎列表
+    winnersSidebar.style.display = 'none';
+    winnersRecord = [];
+    renderWinnersSidebar();
+    
     showLoginPage();
 }
 
@@ -318,7 +345,7 @@ async function handleDevTokenLogin() {
         });
         
         if (!userResponse.ok) {
-            throw new Error('Token 驗證失敗');
+            throw new Error('Token 驗證失敗，請檢查token或client id是否正確');
         }
         
         const userData = await userResponse.json();
@@ -336,7 +363,7 @@ async function handleDevTokenLogin() {
         }
     } catch (error) {
         console.error('開發者 Token 登入失敗:', error);
-        alert('登入失敗：' + error.message + '\n請確認 Token 是否有效');
+        alert('登入失敗：' + error.message + '\n請確認 Token 是否有效或client id是否正確');
         currentToken = null;
         localStorage.removeItem('twitch_token');
         showLoginPage();
@@ -398,6 +425,85 @@ async function copyTokenToClipboard() {
             alert('❌ 複製失敗，請手動選取並複製');
         }
         document.body.removeChild(textArea);
+    }
+}
+
+// 根據 tabId 獲取獎項名稱
+function getRewardNameByTabId(tabId) {
+    if (tabId === 'custom') {
+        return '自定義抽獎';
+    }
+    
+    const tab = allTabs.find(t => t.id === tabId);
+    return tab ? tab.title : '未知獎項';
+}
+
+// 切換右側中獎列表面板
+function toggleWinnersSidebar() {
+    winnersSidebar.classList.toggle('collapsed');
+}
+
+// 添加中獎者到右側列表
+function addWinnerToSidebar(rewardName, userId, userName) {
+    // 避免重複添加（檢查是否已存在相同的獎項+用戶組合）
+    const isDuplicate = winnersRecord.some(
+        record => record.rewardName === rewardName && record.userId === userId
+    );
+    
+    if (isDuplicate) {
+        return; // 已存在，不重複添加
+    }
+    
+    // 添加到記錄
+    const winnerData = {
+        id: Date.now() + Math.random(), // 唯一 ID
+        rewardName,
+        userId,
+        userName,
+        timestamp: Date.now()
+    };
+    winnersRecord.push(winnerData);
+    
+    // 更新顯示
+    renderWinnersSidebar();
+}
+
+// 渲染右側中獎列表
+function renderWinnersSidebar() {
+    if (winnersRecord.length === 0) {
+        winnersList.innerHTML = '<p class="empty-message">尚無中獎記錄</p>';
+        return;
+    }
+    
+    winnersList.innerHTML = winnersRecord.map(winner => `
+        <div class="winner-entry" data-winner-id="${winner.id}">
+            <div class="winner-entry-header">
+                <span class="reward-name">${winner.rewardName}</span>
+                <button class="remove-winner-btn" onclick="removeWinnerFromSidebar(${winner.id})" title="移除此記錄">✕</button>
+            </div>
+            <div class="winner-user-info">
+                <span class="winner-user-id">${winner.userId}</span>
+                <span class="winner-user-name">${winner.userName || ''}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+// 移除單個中獎者
+function removeWinnerFromSidebar(winnerId) {
+    winnersRecord = winnersRecord.filter(w => w.id !== winnerId);
+    renderWinnersSidebar();
+}
+
+// 清空全部中獎記錄
+function handleClearAllWinners() {
+    if (winnersRecord.length === 0) {
+        return;
+    }
+    
+    if (confirm('確定要清空所有中獎記錄嗎？')) {
+        winnersRecord = [];
+        renderWinnersSidebar();
     }
 }
 
@@ -846,13 +952,7 @@ function toggleContinuousMode(tabId, checked) {
     
     if (checked) {
         // 啟用連續模式
-        // 清除當前分頁的淘汰標記
-        if (idList) {
-            const items = idList.querySelectorAll('.id-item.eliminated');
-            items.forEach(item => {
-                item.classList.remove('eliminated');
-            });
-        }
+        // （已移除清除淘汰標記的邏輯，因為不再使用刪除線）
         
         // 如果有已中獎的，顯示已中獎區域
         if (winnersSection && drawnWinners[tabId] && drawnWinners[tabId].length > 0) {
@@ -895,12 +995,21 @@ function handleWinnerInContinuousMode(tabId, winnerNumber) {
     if (idList && winnersList) {
         const winnerItem = idList.querySelector(`[data-id="${winnerNumber}"]`);
         if (winnerItem) {
+            // 獲取獎項名稱和用戶資訊
+            const rewardName = getRewardNameByTabId(tabId);
+            const userName = winnerItem.dataset.name || winnerItem.textContent.trim();
+            
+            // 添加到右側中獎列表（僅登入模式）
+            if (currentToken && rewardName) {
+                addWinnerToSidebar(rewardName, winnerNumber, userName);
+            }
+            
             // 從未中獎列表移除
             winnerItem.remove();
             
             // 複製一份添加到已中獎列表
             const winnerCopy = winnerItem.cloneNode(true);
-            winnerCopy.classList.remove('eliminated', 'winner');
+            winnerCopy.classList.remove('winner');
             winnerCopy.classList.add('drawn');
             winnersList.appendChild(winnerCopy);
             
@@ -993,10 +1102,10 @@ function startLottery(tabId) {
         drawnWinners[tabId] = [];
     }
     
-    // 重置所有淘汰和中獎狀態，開始新一輪抽獎
+    // 重置中獎狀態，開始新一輪抽獎
     const allItems = idList.querySelectorAll('.id-item');
     allItems.forEach(item => {
-        item.classList.remove('eliminated', 'winner');
+        item.classList.remove('winner');
     });
     
     // 獲取可用的參與者（連續模式下排除已中獎的）
@@ -1072,7 +1181,7 @@ function startLottery(tabId) {
                 if (continuousMode) {
                     setTimeout(() => {
                         handleWinnerInContinuousMode(tabId, winnerNumber);
-                    }, 2000);
+                    }, 500); // 0.5 秒延遲
                 }
                 
                 // 重新啟用按鈕
@@ -1154,29 +1263,15 @@ function handleShrink() {
     digitElement.classList.remove('covered');
     digitElement.classList.add('revealed');
     
-    // 淘汰不符合的 ID
+    // 獲取已揭示的數字（用於候選名單顯示）
     const revealedDigits = [];
     for (let i = 1; i <= revealStep; i++) {
         const digit = document.getElementById(`digit${i}`).querySelector('.actual-digit').textContent;
         revealedDigits.push(digit);
     }
     
-    const items = idList.querySelectorAll('.id-item');
-    items.forEach(item => {
-        const id = item.dataset.id;
-        let shouldEliminate = false;
-        
-        for (let i = 0; i < revealedDigits.length; i++) {
-            if (id[i] !== revealedDigits[i]) {
-                shouldEliminate = true;
-                break;
-            }
-        }
-        
-        if (shouldEliminate && !item.classList.contains('eliminated')) {
-            item.classList.add('eliminated');
-        }
-    });
+    // 已移除刪除線功能
+    // 不再淘汰不符合的 ID
     
     // 判斷是否為 Twitch 登入模式（非自定義模式）
     const isTwitchMode = tabId !== 'custom';
@@ -1198,7 +1293,6 @@ function handleShrink() {
         
         const winnerItem = idList.querySelector(`[data-id="${currentWinnerNumber}"]`);
         if (winnerItem) {
-            winnerItem.classList.remove('eliminated');
             winnerItem.classList.add('winner');
         }
         
@@ -1222,8 +1316,8 @@ function showCandidatesList(revealedDigits, idList) {
     const prefix = revealedDigits.join('');
     const candidates = [];
     
-    // 收集實際存在的候選者
-    const items = idList.querySelectorAll('.id-item:not(.eliminated)');
+    // 收集實際存在的候選者（不再過濾 eliminated，因為已移除刪除線功能）
+    const items = idList.querySelectorAll('.id-item');
     items.forEach(item => {
         const id = item.dataset.id;
         if (id.startsWith(prefix)) {
@@ -1299,6 +1393,15 @@ function closeResultOverlay() {
         if (idList && winnersList) {
             const winnerItem = idList.querySelector(`[data-id="${currentWinnerNumber}"]`);
             if (winnerItem) {
+                // 獲取獎項名稱和用戶資訊
+                const rewardName = getRewardNameByTabId(tabId);
+                const userName = winnerItem.dataset.name || winnerItem.textContent.trim();
+                
+                // 添加到右側中獎列表（僅登入模式）
+                if (currentToken && rewardName) {
+                    addWinnerToSidebar(rewardName, currentWinnerNumber, userName);
+                }
+                
                 // 從未中獎列表移除
                 winnerItem.remove();
                 
