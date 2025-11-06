@@ -222,6 +222,11 @@ function handleStartGuest() {
     mainPage.classList.add('active');
     userName.textContent = '未登入模式';
     
+    // 清空之前的分頁（如果有）
+    allTabs = [];
+    rewardTabs.innerHTML = '';
+    tabContent.innerHTML = '';
+    
     // 隱藏右側中獎列表（未登入模式不需要）
     winnersSidebar.style.display = 'none';
     
@@ -288,6 +293,10 @@ function handleLogout() {
     currentRewards = [];
     allTabs = [];
     localStorage.removeItem('twitch_token');
+    
+    // 清空分頁 DOM 元素
+    rewardTabs.innerHTML = '';
+    tabContent.innerHTML = '';
     
     // 隱藏並清空右側中獎列表
     winnersSidebar.style.display = 'none';
