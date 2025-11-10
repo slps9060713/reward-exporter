@@ -15,6 +15,7 @@ let revealStep = 0; // 0: 未開始, 1: 百位數, 2: 十位數, 3: 個位數
 let continuousMode = false; // 是否啟用連續抽取模式
 let drawnWinners = {}; // 記錄每個分頁已中獎的 ID {tabId: [winnerId1, winnerId2, ...]}
 let skipShrinkMode = false; // 是否跳過縮圈（直接顯示結果）
+let noOverlayMode = false; // 無彈窗模式（在輪盤區域直接縮圈）
 
 // 音效系統
 let audioContext = null;
@@ -727,6 +728,10 @@ async function loadRedemptionsForTab(tabId) {
                                 <input type="checkbox" id="skipShrinkMode-${tabData.id}" onchange="toggleSkipShrinkMode(this.checked)">
                                 <span>跳過縮圈（直接顯示結果）</span>
                             </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="noOverlayMode-${tabData.id}" onchange="toggleNoOverlayMode(this.checked)">
+                                <span>無彈窗模式</span>
+                            </label>
                         </div>
                         <div class="wheel-info">準備抽獎</div>
                         <button class="btn-primary" id="startBtn-${tabData.id}" onclick="startLottery('${tabData.id}')" ${tabData.participants.length === 0 ? 'disabled' : ''}>
@@ -811,6 +816,10 @@ function createTabElements(tabData, isActive = false) {
                         <input type="checkbox" id="skipShrinkMode-${tabData.id}" onchange="toggleSkipShrinkMode(this.checked)">
                         <span>跳過縮圈（直接顯示結果）</span>
                     </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="noOverlayMode-${tabData.id}" onchange="toggleNoOverlayMode(this.checked)">
+                        <span>無彈窗模式</span>
+                    </label>
                 </div>
                 <button class="btn-secondary" onclick="updateCustomList()" style="margin-top: 1rem;">更新列表</button>
             </div>
@@ -868,6 +877,10 @@ function createTabElements(tabData, isActive = false) {
                             <label class="checkbox-label">
                                 <input type="checkbox" id="skipShrinkMode-${tabData.id}" onchange="toggleSkipShrinkMode(this.checked)">
                                 <span>跳過縮圈（直接顯示結果）</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="noOverlayMode-${tabData.id}" onchange="toggleNoOverlayMode(this.checked)">
+                                <span>無彈窗模式</span>
                             </label>
                         </div>
                         <div class="wheel-info">準備抽獎</div>
@@ -982,6 +995,11 @@ function toggleContinuousMode(tabId, checked) {
 // 切換跳過縮圈模式
 function toggleSkipShrinkMode(checked) {
     skipShrinkMode = checked;
+}
+
+// 切換無彈窗模式
+function toggleNoOverlayMode(checked) {
+    noOverlayMode = checked;
 }
 
 // 處理連續模式下的中獎項（跳過縮圈時使用）
@@ -1196,6 +1214,16 @@ function startLottery(tabId) {
                 // 重新啟用按鈕
                 startBtn.disabled = false;
                 wheelInfo.textContent = '準備下次抽獎';
+            } else if (noOverlayMode) {
+                // 無彈窗模式：在輪盤區域直接縮圈
+                wheelNumber.textContent = '???';
+                wheelInfo.textContent = '開始縮圈...';
+                
+                // 啟動無彈窗縮圈
+                startNoOverlayShrink(tabId, winnerNumber);
+                
+                // 重新啟用按鈕
+                startBtn.disabled = false;
             } else {
                 // 正常模式：顯示縮圈遮罩
                 wheelNumber.textContent = '???';
@@ -1218,6 +1246,145 @@ function startLottery(tabId) {
     // 保存當前結果
     currentWinnerNumber = winnerNumber;
     revealStep = 0;
+}
+
+// 無彈窗縮圈模式
+function startNoOverlayShrink(tabId, winnerNumber) {
+    const wheelNumber = document.querySelector(`#panel-${tabId} .wheel-number`);
+    const wheelInfo = document.querySelector(`#panel-${tabId} .wheel-info`);
+    const idList = document.getElementById(`id-list-${tabId}`);
+    const startBtn = document.getElementById(`startBtn-${tabId}`);
+    
+    // 創建縮圈按鈕
+    let shrinkButton = document.getElementById(`no-overlay-shrink-${tabId}`);
+    if (!shrinkButton) {
+        shrinkButton = document.createElement('button');
+        shrinkButton.id = `no-overlay-shrink-${tabId}`;
+        shrinkButton.className = 'btn-primary';
+        shrinkButton.textContent = '縮圈';
+        shrinkButton.style.marginTop = '1rem';
+        
+        // 插入到 wheel-controls 容器中
+        const wheelControls = document.querySelector(`#panel-${tabId} .wheel-controls`);
+        if (wheelControls) {
+            wheelControls.appendChild(shrinkButton);
+        }
+    }
+    
+    shrinkButton.style.display = 'block';
+    shrinkButton.disabled = false;
+    
+    // 隱藏啟動抽獎按鈕
+    if (startBtn) {
+        startBtn.style.display = 'none';
+    }
+    
+    const digits = winnerNumber.split('');
+    let currentStep = 0;
+    
+    // 縮圈按鈕點擊事件
+    shrinkButton.onclick = function() {
+        if (currentStep >= 3) {
+            return;
+        }
+        
+        currentStep++;
+        
+        // 🎵 播放揭示音效
+        playSound('reveal');
+        
+        // 顯示當前已揭示的數字
+        const revealedDigits = digits.slice(0, currentStep).join('');
+        const hiddenDigits = '?'.repeat(3 - currentStep);
+        wheelNumber.textContent = revealedDigits + hiddenDigits;
+        
+        if (currentStep === 1) {
+            wheelInfo.textContent = '百位數：' + digits[0];
+        } else if (currentStep === 2) {
+            wheelInfo.textContent = '十位數：' + digits[1];
+        } else if (currentStep === 3) {
+            wheelInfo.textContent = '個位數：' + digits[2];
+        }
+        
+        // 隱藏不符合的項目
+        const items = idList.querySelectorAll('.id-item');
+        items.forEach(item => {
+            const id = item.dataset.id;
+            let shouldHide = false;
+            
+            for (let i = 0; i < currentStep; i++) {
+                if (id[i] !== digits[i]) {
+                    shouldHide = true;
+                    break;
+                }
+            }
+            
+            if (shouldHide) {
+                // 直接隱藏
+                item.style.display = 'none';
+            }
+        });
+        
+        // 如果全部揭示完成
+        if (currentStep >= 3) {
+            wheelNumber.textContent = winnerNumber;
+            wheelInfo.textContent = '中獎！';
+            shrinkButton.textContent = '完成';
+            shrinkButton.disabled = true;
+            
+            // 🎵 播放中獎音效
+            setTimeout(() => {
+                playSound('winner');
+            }, 300);
+            
+            // 標記中獎者
+            const winnerItem = idList.querySelector(`[data-id="${winnerNumber}"]`);
+            if (winnerItem) {
+                winnerItem.classList.add('winner');
+            }
+            
+            // 處理後續
+            setTimeout(() => {
+                if (continuousMode) {
+                    // 連續模式：移除中獎者
+                    const allItems = idList.querySelectorAll('.id-item');
+                    allItems.forEach(item => {
+                        item.style.display = ''; // 恢復顯示
+                    });
+                    handleWinnerInContinuousMode(tabId, winnerNumber);
+                    
+                    // 隱藏縮圈按鈕，準備下次抽獎
+                    shrinkButton.style.display = 'none';
+                    shrinkButton.textContent = '縮圈';
+                    wheelInfo.textContent = '準備下次抽獎';
+                    
+                    // 恢復啟動抽獎按鈕
+                    if (startBtn) {
+                        startBtn.style.display = '';
+                    }
+                } else {
+                    // 非連續模式：恢復所有項目
+                    const allItems = idList.querySelectorAll('.id-item');
+                    allItems.forEach(item => {
+                        item.style.display = ''; // 恢復顯示
+                        item.classList.remove('winner');
+                    });
+                    
+                    // 隱藏縮圈按鈕
+                    shrinkButton.style.display = 'none';
+                    shrinkButton.textContent = '縮圈';
+                    wheelInfo.textContent = '準備下次抽獎';
+                    
+                    // 恢復啟動抽獎按鈕
+                    if (startBtn) {
+                        startBtn.style.display = '';
+                    }
+                }
+            }, 2000);
+        }
+    };
+    
+    wheelInfo.textContent = '點擊「縮圈」開始揭曉';
 }
 
 // 顯示結果遮罩
