@@ -1,7 +1,7 @@
 // Twitch API 設定
 let APP_CLIENT_ID = localStorage.getItem('user_client_id') || ''; // 從 localStorage 讀取
 const REDIRECT_URL = window.location.origin + window.location.pathname;
-const SCOPE = 'channel:read:redemptions';
+const SCOPE = 'channel:read:redemptions channel:manage:redemptions';
 
 // 全局狀態
 let currentToken = null;
@@ -75,6 +75,15 @@ const winnersSidebar = document.getElementById('winnersSidebar');
 const toggleSidebar = document.getElementById('toggleSidebar');
 const winnersList = document.getElementById('winnersList');
 const clearAllWinners = document.getElementById('clearAllWinners');
+const updateAuthBtn = document.getElementById('updateAuthBtn');
+const createRewardBtn = document.getElementById('createRewardBtn');
+const createRewardOverlay = document.getElementById('createRewardOverlay');
+const closeCreateRewardBtn = document.getElementById('closeCreateRewardBtn');
+const cancelCreateRewardBtn = document.getElementById('cancelCreateRewardBtn');
+const submitCreateRewardBtn = document.getElementById('submitCreateRewardBtn');
+const rewardTitle = document.getElementById('rewardTitle');
+const rewardCost = document.getElementById('rewardCost');
+const rewardPrompt = document.getElementById('rewardPrompt');
 
 // 中獎紀錄（用於右側列表）
 let winnersRecord = [];
@@ -112,15 +121,32 @@ function setupEventListeners() {
     uploadWinner.addEventListener('change', (e) => handleFileUpload(e, 'winner'));
     
     // 開發者模式
-    devTrigger.addEventListener('click', showDevTokenPanel);
-    closeDevPanel.addEventListener('click', hideDevTokenPanel);
-    devTokenLoginBtn.addEventListener('click', handleDevTokenLogin);
+    if (devTrigger) devTrigger.addEventListener('click', showDevTokenPanel);
+    if (closeDevPanel) closeDevPanel.addEventListener('click', hideDevTokenPanel);
+    if (devTokenLoginBtn) devTokenLoginBtn.addEventListener('click', handleDevTokenLogin);
+    if (updateAuthBtn) updateAuthBtn.addEventListener('click', reauthorizeTwitch);
     // 點擊面板背景關閉
-    devTokenPanel.addEventListener('click', (e) => {
-        if (e.target === devTokenPanel) {
-            hideDevTokenPanel();
-        }
-    });
+    if (devTokenPanel) {
+        devTokenPanel.addEventListener('click', (e) => {
+            if (e.target === devTokenPanel) {
+                hideDevTokenPanel();
+            }
+        });
+    }
+    
+    // 創建獎勵功能
+    if (createRewardBtn) createRewardBtn.addEventListener('click', showCreateRewardOverlay);
+    if (closeCreateRewardBtn) closeCreateRewardBtn.addEventListener('click', hideCreateRewardOverlay);
+    if (cancelCreateRewardBtn) cancelCreateRewardBtn.addEventListener('click', hideCreateRewardOverlay);
+    if (submitCreateRewardBtn) submitCreateRewardBtn.addEventListener('click', handleCreateReward);
+    // 點擊面板背景關閉
+    if (createRewardOverlay) {
+        createRewardOverlay.addEventListener('click', (e) => {
+            if (e.target === createRewardOverlay) {
+                hideCreateRewardOverlay();
+            }
+        });
+    }
     
     // Token 分享
     shareTokenBtn.addEventListener('click', showShareTokenOverlay);
@@ -282,9 +308,25 @@ function showMainPage() {
 
 
 // 重定向到 Twitch 授權頁面
-function redirectToTwitchAuth() {
-    const authUrl = `https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=${APP_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URL)}&scope=${SCOPE}`;
+function redirectToTwitchAuth(forceReauth = false) {
+    let authUrl = `https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=${APP_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URL)}&scope=${SCOPE}`;
+    
+    // 如果需要強制重新授權，加入 force_verify 參數
+    if (forceReauth) {
+        authUrl += '&force_verify=true';
+    }
+    
     window.location.href = authUrl;
+}
+
+// 重新授權（清除舊 token 並重新登入）
+function reauthorizeTwitch() {
+    // 清除舊的 token
+    currentToken = null;
+    localStorage.removeItem('twitch_token');
+    
+    // 重新導向到授權頁面（強制驗證）
+    redirectToTwitchAuth(true);
 }
 
 // 登出
@@ -594,6 +636,136 @@ async function getCustomRewards() {
         return data.data;
     } catch (error) {
         throw error;
+    }
+}
+
+// 創建自訂獎勵
+async function createCustomReward(title, cost, prompt) {
+    try {
+        if (!currentToken || !currentBroadcasterId) {
+            throw new Error('請先登入並取得授權');
+        }
+        
+        const requestBody = {
+            title: title,
+            cost: parseInt(cost, 10),
+            is_enabled: false,
+            is_max_per_user_per_stream_enabled: true,
+            max_per_user_per_stream: 1,
+        };
+        
+        // prompt 是選填的，只有當有值時才加入
+        if (prompt && prompt.trim()) {
+            requestBody.prompt = prompt.trim();
+        }
+        
+        const response = await fetch(
+            `https://api.twitch.tv/helix/channel_points/custom_rewards?broadcaster_id=${currentBroadcasterId}`,
+            {
+                method: 'POST',
+                headers: {
+                    'Client-Id': APP_CLIENT_ID,
+                    'Authorization': `Bearer ${currentToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            }
+        );
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            if (response.status === 401) {
+                throw new Error('授權已過期，請重新登入');
+            } else if (response.status === 403) {
+                throw new Error('權限不足，請確認 Token 包含 channel:manage:redemptions 權限');
+            } else {
+                throw new Error(errorData.message || `創建失敗 (${response.status})`);
+            }
+        }
+        
+        const data = await response.json();
+        return data.data[0]; // 返回創建的獎勵資料
+    } catch (error) {
+        throw error;
+    }
+}
+
+// 顯示創建獎勵彈窗
+function showCreateRewardOverlay() {
+    if (!currentToken) {
+        alert('❌ 請先登入 Twitch 帳號');
+        return;
+    }
+    
+    if (!createRewardOverlay || !rewardTitle || !rewardCost || !rewardPrompt) {
+        console.error('創建獎勵彈窗元素未找到');
+        return;
+    }
+    
+    // 清空表單
+    rewardTitle.value = '';
+    rewardCost.value = '';
+    rewardPrompt.value = '';
+    
+    createRewardOverlay.style.display = 'flex';
+    rewardTitle.focus();
+}
+
+// 隱藏創建獎勵彈窗
+function hideCreateRewardOverlay() {
+    if (createRewardOverlay) {
+        createRewardOverlay.style.display = 'none';
+    }
+}
+
+// 處理創建獎勵
+async function handleCreateReward() {
+    if (!rewardTitle || !rewardCost || !rewardPrompt || !submitCreateRewardBtn) {
+        console.error('創建獎勵表單元素未找到');
+        return;
+    }
+    
+    const title = rewardTitle.value.trim();
+    const cost = rewardCost.value.trim();
+    const prompt = rewardPrompt.value.trim();
+    
+    // 驗證輸入
+    if (!title) {
+        alert('❌ 請輸入獎勵標題');
+        rewardTitle.focus();
+        return;
+    }
+    
+    if (!cost || isNaN(cost) || parseInt(cost, 10) <= 0) {
+        alert('❌ 請輸入有效的點數成本（必須大於 0）');
+        rewardCost.focus();
+        return;
+    }
+    
+    // 禁用按鈕，顯示載入狀態
+    submitCreateRewardBtn.disabled = true;
+    submitCreateRewardBtn.textContent = '創建中...';
+    
+    try {
+        const newReward = await createCustomReward(title, cost, prompt);
+        
+        alert(`✅ 獎勵「${newReward.title}」創建成功！\n成本：${newReward.cost} 點數`);
+        
+        // 關閉彈窗
+        hideCreateRewardOverlay();
+        
+        // 重新載入獎勵列表
+        await loadRewards();
+        
+    } catch (error) {
+        console.error('創建獎勵失敗:', error);
+        alert('❌ 創建失敗：' + error.message);
+    } finally {
+        // 恢復按鈕狀態
+        if (submitCreateRewardBtn) {
+            submitCreateRewardBtn.disabled = false;
+            submitCreateRewardBtn.textContent = '創建獎勵';
+        }
     }
 }
 

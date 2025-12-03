@@ -112,6 +112,12 @@
                                 <path d="M15.41 6.51L8.59 10.49" stroke="currentColor" stroke-width="2"/>
                             </svg>
                         </button>
+                        <button id="createRewardBtn" class="btn-settings" title="創建自訂獎勵">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2Z" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
                         <button id="logoutBtn" class="btn-logout">登出</button>
                     </div>
                 </div>
@@ -286,6 +292,35 @@
             </div>
             <p class="dev-warning">⚠️ 開發者測試用</p>
             <button id="devTokenLoginBtn" class="btn-primary">使用 Token 登入</button>
+            <button id="updateAuthBtn" class="btn-secondary" style="margin-top: 0.5rem;">更新授權內容</button>
+        </div>
+    </div>
+
+    <!-- 創建自訂獎勵面板 -->
+    <div id="createRewardOverlay" class="overlay" style="display: none;">
+        <div class="overlay-content create-reward-panel">
+            <button id="closeCreateRewardBtn" class="close-overlay-btn">✕</button>
+            <h2>🎁 創建自訂獎勵</h2>
+            
+            <div class="form-group">
+                <label for="rewardTitle">獎勵標題 (Title):</label>
+                <input type="text" id="rewardTitle" class="form-input" placeholder="輸入獎勵標題" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="rewardCost">成本 (Cost):</label>
+                <input type="number" id="rewardCost" class="form-input" placeholder="輸入點數成本" min="1" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="rewardPrompt">提示訊息 (Prompt):</label>
+                <textarea id="rewardPrompt" class="form-input" rows="3" placeholder="輸入提示訊息（選填）"></textarea>
+            </div>
+            
+            <div class="overlay-buttons">
+                <button id="submitCreateRewardBtn" class="btn-primary">創建獎勵</button>
+                <button id="cancelCreateRewardBtn" class="btn-secondary">取消</button>
+            </div>
         </div>
     </div>
 

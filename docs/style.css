@@ -193,6 +193,59 @@ body {
     box-shadow: 0 0 0 2px rgba(145, 70, 255, 0.2);
 }
 
+/* 表單輸入框樣式 */
+.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-color);
+    font-size: 1rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(145, 70, 255, 0.2);
+}
+
+.form-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.6;
+}
+
+/* 創建獎勵面板樣式 */
+.create-reward-panel {
+    max-width: 500px;
+    position: relative;
+}
+
+.create-reward-panel .close-overlay-btn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.create-reward-panel .close-overlay-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    transform: rotate(90deg);
+}
+
 .status-text {
     margin: 0.5rem 0;
     font-size: 0.9rem;
