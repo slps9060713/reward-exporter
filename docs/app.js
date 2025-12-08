@@ -74,6 +74,7 @@ const copyTokenBtn = document.getElementById('copyTokenBtn');
 const winnersSidebar = document.getElementById('winnersSidebar');
 const toggleSidebar = document.getElementById('toggleSidebar');
 const winnersList = document.getElementById('winnersList');
+const copyWinnersBtn = document.getElementById('copyWinnersBtn');
 const clearAllWinners = document.getElementById('clearAllWinners');
 const updateAuthBtn = document.getElementById('updateAuthBtn');
 const createRewardBtn = document.getElementById('createRewardBtn');
@@ -95,6 +96,7 @@ function init() {
     setupEventListeners();
     initSoundSystem();
     loadSoundSettings();
+    loadGlobalLotteryOptions();
 }
 
 // 設置事件監聽器
@@ -161,6 +163,7 @@ function setupEventListeners() {
     
     // 右側中獎列表
     toggleSidebar.addEventListener('click', toggleWinnersSidebar);
+    if (copyWinnersBtn) copyWinnersBtn.addEventListener('click', handleCopyWinners);
     clearAllWinners.addEventListener('click', handleClearAllWinners);
 }
 
@@ -256,6 +259,9 @@ function handleStartGuest() {
     
     // 隱藏右側中獎列表（未登入模式不需要）
     winnersSidebar.style.display = 'none';
+    
+    // 顯示主內容（包含全局選項）
+    showMainContent();
     
     createCustomTab();
 }
@@ -545,6 +551,52 @@ function renderWinnersSidebar() {
 function removeWinnerFromSidebar(winnerId) {
     winnersRecord = winnersRecord.filter(w => w.id !== winnerId);
     renderWinnersSidebar();
+}
+
+// 複製中獎名單
+async function handleCopyWinners() {
+    if (winnersRecord.length === 0) {
+        alert('❌ 尚無中獎記錄可複製');
+        return;
+    }
+    
+    // 格式化數據：rewardName userName（每行一個）
+    const formattedText = winnersRecord
+        .map(winner => `${winner.rewardName} ${winner.userName}`)
+        .join('\n');
+    
+    try {
+        // 使用 Clipboard API 複製到剪貼板
+        await navigator.clipboard.writeText(formattedText);
+        
+        // 顯示成功提示
+        const originalText = copyWinnersBtn.textContent;
+        copyWinnersBtn.textContent = '✅ 已複製';
+        copyWinnersBtn.disabled = true;
+        
+        setTimeout(() => {
+            copyWinnersBtn.textContent = originalText;
+            copyWinnersBtn.disabled = false;
+        }, 2000);
+    } catch (error) {
+        console.error('複製失敗:', error);
+        alert('❌ 複製失敗，請手動複製');
+        
+        // 降級方案：使用傳統方法
+        const textArea = document.createElement('textarea');
+        textArea.value = formattedText;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            alert('✅ 已複製到剪貼板');
+        } catch (err) {
+            alert('❌ 複製失敗，請手動複製以下內容：\n\n' + formattedText);
+        }
+        document.body.removeChild(textArea);
+    }
 }
 
 // 清空全部中獎記錄
@@ -882,7 +934,16 @@ async function loadRedemptionsForTab(tabId) {
                         <div class="id-list winners-list" id="winners-list-${tabData.id}"></div>
                     </div>
                     <div class="remaining-section">
-                        <div class="id-list-header">參與名單 (${tabData.participants.length} 人)</div>
+                        <div class="id-list-header">
+                            <span>參與名單 (${tabData.participants.length} 人)</span>
+                            <button class="reload-icon-btn" onclick="reloadRedemptionsForTab('${tabData.id}')" title="重新載入名單">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M1 4V10H7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M23 20V14H17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10M23 14L18.36 18.36A9 9 0 0 1 3.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
                         <div class="id-list" id="id-list-${tabData.id}"></div>
                     </div>
                 </div>
@@ -891,20 +952,6 @@ async function loadRedemptionsForTab(tabId) {
                         <div class="wheel-number">000</div>
                     </div>
                     <div class="wheel-controls">
-                        <div class="continuous-mode-option">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="continuousMode-${tabData.id}" onchange="toggleContinuousMode('${tabData.id}', this.checked)">
-                                <span>連續抽取（移除已中獎選項）</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="skipShrinkMode-${tabData.id}" onchange="toggleSkipShrinkMode(this.checked)">
-                                <span>跳過縮圈（直接顯示結果）</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="noOverlayMode-${tabData.id}" onchange="toggleNoOverlayMode(this.checked)">
-                                <span>無彈窗模式</span>
-                            </label>
-                        </div>
                         <div class="wheel-info">準備抽獎</div>
                         <button class="btn-primary" id="startBtn-${tabData.id}" onclick="startLottery('${tabData.id}')" ${tabData.participants.length === 0 ? 'disabled' : ''}>
                             ${tabData.participants.length === 0 ? '無參與者' : '啟動抽獎'}
@@ -920,6 +967,7 @@ async function loadRedemptionsForTab(tabId) {
             const item = document.createElement('div');
             item.className = 'id-item';
             item.dataset.id = participant.id;
+            item.dataset.username = participant.username;
             item.textContent = `${participant.id} - ${participant.username}`;
             idList.appendChild(item);
         });
@@ -979,20 +1027,6 @@ function createTabElements(tabData, isActive = false) {
             <div class="custom-input-group">
                 <label for="customMax">輸入最大號碼（001 到）：</label>
                 <input type="number" id="customMax" min="1" max="999" value="100" />
-                <div class="continuous-mode-option">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="continuousMode-${tabData.id}" onchange="toggleContinuousMode('${tabData.id}', this.checked)">
-                        <span>連續抽取（移除已中獎選項）</span>
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="skipShrinkMode-${tabData.id}" onchange="toggleSkipShrinkMode(this.checked)">
-                        <span>跳過縮圈（直接顯示結果）</span>
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="noOverlayMode-${tabData.id}" onchange="toggleNoOverlayMode(this.checked)">
-                        <span>無彈窗模式</span>
-                    </label>
-                </div>
                 <button class="btn-secondary" onclick="updateCustomList()" style="margin-top: 1rem;">更新列表</button>
             </div>
             <div class="lottery-container">
@@ -1022,57 +1056,6 @@ function createTabElements(tabData, isActive = false) {
         
         // 初始化自定義列表
         setTimeout(() => updateCustomList(), 100);
-    } else if (tabData.loaded && tabData.participants) {
-        // 已載入的獎勵分頁
-        panel.innerHTML = `
-            <div class="lottery-container">
-                <div class="id-list-container">
-                    <div class="winners-section" id="winners-section-${tabData.id}" style="display: none;">
-                        <div class="id-list-header winner-header">✅ 已中獎</div>
-                        <div class="id-list winners-list" id="winners-list-${tabData.id}"></div>
-                    </div>
-                    <div class="remaining-section">
-                        <div class="id-list-header">參與名單 (${tabData.participants.length} 人)</div>
-                        <div class="id-list" id="id-list-${tabData.id}"></div>
-                    </div>
-                </div>
-                <div class="wheel-container">
-                    <div class="wheel" id="wheel-${tabData.id}">
-                        <div class="wheel-number">000</div>
-                    </div>
-                    <div class="wheel-controls">
-                        <div class="continuous-mode-option">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="continuousMode-${tabData.id}" onchange="toggleContinuousMode('${tabData.id}', this.checked)">
-                                <span>連續抽取（移除已中獎選項）</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="skipShrinkMode-${tabData.id}" onchange="toggleSkipShrinkMode(this.checked)">
-                                <span>跳過縮圈（直接顯示結果）</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="noOverlayMode-${tabData.id}" onchange="toggleNoOverlayMode(this.checked)">
-                                <span>無彈窗模式</span>
-                            </label>
-                        </div>
-                        <div class="wheel-info">準備抽獎</div>
-                        <button class="btn-primary" id="startBtn-${tabData.id}" onclick="startLottery('${tabData.id}')" ${tabData.participants.length === 0 ? 'disabled' : ''}>
-                            ${tabData.participants.length === 0 ? '無參與者' : '啟動抽獎'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // 填充 ID 列表
-        const idList = panel.querySelector(`#id-list-${tabData.id}`);
-        tabData.participants.forEach(participant => {
-            const item = document.createElement('div');
-            item.className = 'id-item';
-            item.dataset.id = participant.id;
-            item.textContent = `${participant.id} - ${participant.username}`;
-            idList.appendChild(item);
-        });
     } else {
         // 未載入的獎勵分頁 - 顯示載入按鈕
         panel.innerHTML = `
@@ -1080,12 +1063,6 @@ function createTabElements(tabData, isActive = false) {
                 <div class="load-icon">📋</div>
                 <h3>${tabData.title}</h3>
                 <p class="load-description">此獎勵的兌換名單尚未載入</p>
-                <div class="continuous-mode-option">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="continuousMode-${tabData.id}" onchange="toggleContinuousMode('${tabData.id}', this.checked)">
-                        <span>連續抽取（移除已中獎選項）</span>
-                    </label>
-                </div>
                 <p class="load-status"></p>
                 <button class="btn-primary load-btn" onclick="loadRedemptionsForTab('${tabData.id}')">
                     📥 載入名單
@@ -1138,16 +1115,45 @@ function updateCustomList() {
 }
 
 // 切換連續抽取模式
-function toggleContinuousMode(tabId, checked) {
-    continuousMode = checked;
+// 載入全局抽獎選項狀態
+function loadGlobalLotteryOptions() {
+    const savedContinuous = localStorage.getItem('globalContinuousMode');
+    const savedSkipShrink = localStorage.getItem('globalSkipShrinkMode');
+    const savedNoOverlay = localStorage.getItem('globalNoOverlayMode');
     
+    if (savedContinuous !== null) {
+        continuousMode = savedContinuous === 'true';
+        const checkbox = document.getElementById('globalContinuousMode');
+        if (checkbox) checkbox.checked = continuousMode;
+    }
+    
+    if (savedSkipShrink !== null) {
+        skipShrinkMode = savedSkipShrink === 'true';
+        const checkbox = document.getElementById('globalSkipShrinkMode');
+        if (checkbox) checkbox.checked = skipShrinkMode;
+    }
+    
+    if (savedNoOverlay !== null) {
+        noOverlayMode = savedNoOverlay === 'true';
+        const checkbox = document.getElementById('globalNoOverlayMode');
+        if (checkbox) checkbox.checked = noOverlayMode;
+    }
+}
+
+// 全局連續模式切換
+function toggleGlobalContinuousMode(checked) {
+    continuousMode = checked;
+    localStorage.setItem('globalContinuousMode', checked.toString());
+    
+    // 獲取當前活躍的分頁
+    const activePanel = document.querySelector('.tab-panel.active');
+    if (!activePanel) return;
+    
+    const tabId = activePanel.id.replace('panel-', '');
     const winnersSection = document.getElementById(`winners-section-${tabId}`);
-    const idList = document.getElementById(`id-list-${tabId}`);
     
     if (checked) {
         // 啟用連續模式
-        // （已移除清除淘汰標記的邏輯，因為不再使用刪除線）
-        
         // 如果有已中獎的，顯示已中獎區域
         if (winnersSection && drawnWinners[tabId] && drawnWinners[tabId].length > 0) {
             winnersSection.style.display = 'block';
@@ -1164,18 +1170,34 @@ function toggleContinuousMode(tabId, checked) {
     }
 }
 
-// 切換跳過縮圈模式
-function toggleSkipShrinkMode(checked) {
+// 全局跳過縮圈模式切換
+function toggleGlobalSkipShrinkMode(checked) {
     skipShrinkMode = checked;
+    localStorage.setItem('globalSkipShrinkMode', checked.toString());
 }
 
-// 切換無彈窗模式
-function toggleNoOverlayMode(checked) {
+// 全局無彈窗模式切換
+function toggleGlobalNoOverlayMode(checked) {
     noOverlayMode = checked;
+    localStorage.setItem('globalNoOverlayMode', checked.toString());
+}
+
+// 保留舊函數名以向後兼容（已廢棄，但保留以防其他地方調用）
+function toggleContinuousMode(tabId, checked) {
+    toggleGlobalContinuousMode(checked);
+}
+
+function toggleSkipShrinkMode(checked) {
+    toggleGlobalSkipShrinkMode(checked);
+}
+
+function toggleNoOverlayMode(checked) {
+    toggleGlobalNoOverlayMode(checked);
 }
 
 // 處理連續模式下的中獎項（跳過縮圈時使用）
-function handleWinnerInContinuousMode(tabId, winnerNumber) {
+// 處理中獎邏輯（所有模式通用）
+function handleWinner(tabId, winnerNumber) {
     // 初始化已中獎列表
     if (!drawnWinners[tabId]) {
         drawnWinners[tabId] = [];
@@ -1186,47 +1208,80 @@ function handleWinnerInContinuousMode(tabId, winnerNumber) {
         drawnWinners[tabId].push(winnerNumber);
     }
     
-    // 移動中獎項到已中獎列表
+    // 獲取相關 DOM 元素
     const idList = document.getElementById(`id-list-${tabId}`);
     const winnersList = document.getElementById(`winners-list-${tabId}`);
     const winnersSection = document.getElementById(`winners-section-${tabId}`);
     
-    if (idList && winnersList) {
-        const winnerItem = idList.querySelector(`[data-id="${winnerNumber}"]`);
-        if (winnerItem) {
-            // 獲取獎項名稱和用戶資訊
-            const rewardName = getRewardNameByTabId(tabId);
-            const userName = winnerItem.dataset.name || winnerItem.textContent.trim();
-            
-            // 添加到右側中獎列表（僅登入模式）
-            if (currentToken && rewardName) {
-                addWinnerToSidebar(rewardName, winnerNumber, userName);
+    if (!idList || !winnersList) return;
+    
+    // 找到中獎項目
+    const winnerItem = idList.querySelector(`[data-id="${winnerNumber}"]`);
+    if (!winnerItem) return;
+    
+    // 獲取獎項名稱和用戶資訊
+    const rewardName = getRewardNameByTabId(tabId);
+    const userName = winnerItem.dataset.username || winnerItem.textContent.trim();
+    
+    // 所有模式：添加到右側中獎列表（僅登入模式）
+    if (currentToken && rewardName) {
+        addWinnerToSidebar(rewardName, winnerNumber, userName);
+    }
+    
+    // 所有模式：添加到左側已中獎列表
+    const winnerCopy = winnerItem.cloneNode(true);
+    winnerCopy.classList.remove('winner', 'eliminated');
+    winnerCopy.classList.add('drawn');
+    winnersList.appendChild(winnerCopy);
+    
+    // 顯示已中獎區域
+    if (winnersSection) {
+        winnersSection.style.display = 'block';
+    }
+    
+    // 連續模式：從主列表移除中獎者
+    if (continuousMode) {
+        winnerItem.remove();
+    } else {
+        // 非連續模式：先移除中獎標記，然後將 winners-list 的所有內容加回主列表
+        winnerItem.classList.remove('winner');
+        
+        // 將 winners-list 中的所有項目加回主列表（包括剛加入的中獎者）
+        // 這樣下次抽獎時可以再次抽到這些項目
+        const winnersItems = winnersList.querySelectorAll('.id-item');
+        winnersItems.forEach(item => {
+            const itemId = item.dataset.id;
+            // 檢查主列表中是否已存在該 ID
+            const existingItem = idList.querySelector(`[data-id="${itemId}"]`);
+            if (!existingItem) {
+                // 創建新項目並加回主列表
+                const newItem = item.cloneNode(true);
+                newItem.classList.remove('drawn', 'winner', 'eliminated');
+                idList.appendChild(newItem);
             }
-            
-            // 從未中獎列表移除
-            winnerItem.remove();
-            
-            // 複製一份添加到已中獎列表
-            const winnerCopy = winnerItem.cloneNode(true);
-            winnerCopy.classList.remove('winner');
-            winnerCopy.classList.add('drawn');
-            winnersList.appendChild(winnerCopy);
-            
-            // 顯示已中獎區域
-            if (winnersSection) {
-                winnersSection.style.display = 'block';
-            }
-        }
+        });
     }
     
     // 檢查並更新抽獎按鈕狀態
     checkAndUpdateLotteryButton(tabId);
 }
 
+// 保留舊函數名以向後兼容（連續模式專用）
+function handleWinnerInContinuousMode(tabId, winnerNumber) {
+    handleWinner(tabId, winnerNumber);
+}
+
 // 重新載入 Twitch 獎勵名單（用於取消連續模式時重置）
 async function reloadRedemptionsForTab(tabId) {
     const tabData = allTabs.find(t => t.id === tabId);
     if (!tabData || !tabData.loaded || tabData.isCustom) return;
+    
+    // 獲取重新載入按鈕並添加載入動畫
+    const reloadBtn = document.querySelector(`#panel-${tabId} .reload-icon-btn`);
+    if (reloadBtn) {
+        reloadBtn.classList.add('loading');
+        reloadBtn.disabled = true;
+    }
     
     // 重置已中獎列表
     drawnWinners[tabId] = [];
@@ -1244,6 +1299,12 @@ async function reloadRedemptionsForTab(tabId) {
         const idList = document.getElementById(`id-list-${tabId}`);
         const winnersList = document.getElementById(`winners-list-${tabId}`);
         const winnersSection = document.getElementById(`winners-section-${tabId}`);
+        const idListHeader = document.querySelector(`#panel-${tabId} .remaining-section .id-list-header span`);
+        
+        // 更新標題中的人數
+        if (idListHeader) {
+            idListHeader.textContent = `參與名單 (${tabData.participants.length} 人)`;
+        }
         
         if (idList) {
             idList.innerHTML = '';
@@ -1251,6 +1312,7 @@ async function reloadRedemptionsForTab(tabId) {
                 const item = document.createElement('div');
                 item.className = 'id-item';
                 item.dataset.id = participant.id;
+                item.dataset.username = participant.username;
                 item.textContent = `${participant.id} - ${participant.username}`;
                 idList.appendChild(item);
             });
@@ -1270,6 +1332,12 @@ async function reloadRedemptionsForTab(tabId) {
     } catch (error) {
         console.error('重新載入失敗:', error);
         alert('重新載入名單失敗：' + error.message);
+    } finally {
+        // 移除載入動畫
+        if (reloadBtn) {
+            reloadBtn.classList.remove('loading');
+            reloadBtn.disabled = false;
+        }
     }
 }
 
@@ -1295,9 +1363,23 @@ function switchTab(tabId) {
 // 開始抽獎
 function startLottery(tabId) {
     const idList = document.getElementById(`id-list-${tabId}`);
+    const winnersList = document.getElementById(`winners-list-${tabId}`);
+    const winnersSection = document.getElementById(`winners-section-${tabId}`);
     
     // 初始化此分頁的已中獎列表（如果不存在）
     if (!drawnWinners[tabId]) {
+        drawnWinners[tabId] = [];
+    }
+    
+    // 非連續模式：重置 winners-list（清空並隱藏）
+    if (!continuousMode) {
+        if (winnersList) {
+            winnersList.innerHTML = '';
+        }
+        if (winnersSection) {
+            winnersSection.style.display = 'none';
+        }
+        // 重置已中獎記錄
         drawnWinners[tabId] = [];
     }
     
@@ -1376,12 +1458,10 @@ function startLottery(tabId) {
                     winnerItem.classList.add('winner');
                 }
                 
-                // 如果是連續模式，自動處理已中獎項
-                if (continuousMode) {
-                    setTimeout(() => {
-                        handleWinnerInContinuousMode(tabId, winnerNumber);
-                    }, 500); // 0.5 秒延遲
-                }
+                // 所有模式：自動處理中獎邏輯
+                setTimeout(() => {
+                    handleWinner(tabId, winnerNumber);
+                }, 500); // 0.5 秒延遲
                 
                 // 重新啟用按鈕
                 startBtn.disabled = false;
@@ -1517,40 +1597,23 @@ function startNoOverlayShrink(tabId, winnerNumber) {
             
             // 處理後續
             setTimeout(() => {
-                if (continuousMode) {
-                    // 連續模式：移除中獎者
-                    const allItems = idList.querySelectorAll('.id-item');
-                    allItems.forEach(item => {
-                        item.style.display = ''; // 恢復顯示
-                    });
-                    handleWinnerInContinuousMode(tabId, winnerNumber);
-                    
-                    // 隱藏縮圈按鈕，準備下次抽獎
-                    shrinkButton.style.display = 'none';
-                    shrinkButton.textContent = '縮圈';
-                    wheelInfo.textContent = '準備下次抽獎';
-                    
-                    // 恢復啟動抽獎按鈕
-                    if (startBtn) {
-                        startBtn.style.display = '';
-                    }
-                } else {
-                    // 非連續模式：恢復所有項目
-                    const allItems = idList.querySelectorAll('.id-item');
-                    allItems.forEach(item => {
-                        item.style.display = ''; // 恢復顯示
-                        item.classList.remove('winner');
-                    });
-                    
-                    // 隱藏縮圈按鈕
-                    shrinkButton.style.display = 'none';
-                    shrinkButton.textContent = '縮圈';
-                    wheelInfo.textContent = '準備下次抽獎';
-                    
-                    // 恢復啟動抽獎按鈕
-                    if (startBtn) {
-                        startBtn.style.display = '';
-                    }
+                // 恢復所有項目的顯示
+                const allItems = idList.querySelectorAll('.id-item');
+                allItems.forEach(item => {
+                    item.style.display = ''; // 恢復顯示
+                });
+                
+                // 所有模式：處理中獎邏輯
+                handleWinner(tabId, winnerNumber);
+                
+                // 隱藏縮圈按鈕，準備下次抽獎
+                shrinkButton.style.display = 'none';
+                shrinkButton.textContent = '縮圈';
+                wheelInfo.textContent = '準備下次抽獎';
+                
+                // 恢復啟動抽獎按鈕
+                if (startBtn) {
+                    startBtn.style.display = '';
                 }
             }, 2000);
         }
@@ -1688,10 +1751,21 @@ function showCandidatesList(revealedDigits, idList) {
         const candidateItem = document.createElement('div');
         candidateItem.className = 'candidate-item';
         candidateItem.dataset.id = candidate.id;
-        candidateItem.innerHTML = `
-            <span class="candidate-id">${candidate.id}</span>
-            ${candidate.username ? `<span class="candidate-name">${candidate.username}</span>` : ''}
-        `;
+        
+        // 創建 ID 顯示
+        const candidateId = document.createElement('span');
+        candidateId.className = 'candidate-id';
+        candidateId.textContent = candidate.id;
+        candidateItem.appendChild(candidateId);
+        
+        // 創建用戶名顯示（如果有）
+        if (candidate.username) {
+            const candidateName = document.createElement('span');
+            candidateName.className = 'candidate-name';
+            candidateName.textContent = candidate.username;
+            candidateName.title = candidate.username; // 設置 title 屬性，滑鼠懸停時顯示完整名稱
+            candidateItem.appendChild(candidateName);
+        }
         
         if (index < 5) {
             leftCandidates.appendChild(candidateItem);
@@ -1717,57 +1791,14 @@ function highlightWinnerInCandidates(winnerId) {
 
 // 關閉結果遮罩
 function closeResultOverlay() {
-    // 在連續模式下，記錄已中獎的號碼
-    if (continuousMode && currentWinnerNumber) {
+    // 所有模式：處理中獎邏輯
+    if (currentWinnerNumber) {
         // 找到當前活躍的分頁
         const activePanel = document.querySelector('.tab-panel.active');
         const tabId = activePanel.id.replace('panel-', '');
         
-        // 初始化已中獎列表（如果不存在）
-        if (!drawnWinners[tabId]) {
-            drawnWinners[tabId] = [];
-        }
-        
-        // 記錄中獎號碼
-        if (!drawnWinners[tabId].includes(currentWinnerNumber)) {
-            drawnWinners[tabId].push(currentWinnerNumber);
-        }
-        
-        // 移動中獎項到已中獎列表
-        const idList = document.getElementById(`id-list-${tabId}`);
-        const winnersList = document.getElementById(`winners-list-${tabId}`);
-        const winnersSection = document.getElementById(`winners-section-${tabId}`);
-        
-        if (idList && winnersList) {
-            const winnerItem = idList.querySelector(`[data-id="${currentWinnerNumber}"]`);
-            if (winnerItem) {
-                // 獲取獎項名稱和用戶資訊
-                const rewardName = getRewardNameByTabId(tabId);
-                const userName = winnerItem.dataset.name || winnerItem.textContent.trim();
-                
-                // 添加到右側中獎列表（僅登入模式）
-                if (currentToken && rewardName) {
-                    addWinnerToSidebar(rewardName, currentWinnerNumber, userName);
-                }
-                
-                // 從未中獎列表移除
-                winnerItem.remove();
-                
-                // 複製一份添加到已中獎列表
-                const winnerCopy = winnerItem.cloneNode(true);
-                winnerCopy.classList.remove('eliminated', 'winner');
-                winnerCopy.classList.add('drawn');
-                winnersList.appendChild(winnerCopy);
-                
-                // 顯示已中獎區域
-                if (winnersSection) {
-                    winnersSection.style.display = 'block';
-                }
-            }
-        }
-        
-        // 檢查並更新抽獎按鈕狀態
-        checkAndUpdateLotteryButton(tabId);
+        // 處理中獎（所有模式通用）
+        handleWinner(tabId, currentWinnerNumber);
     }
     
     resultOverlay.style.display = 'none';

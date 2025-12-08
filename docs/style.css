@@ -766,9 +766,18 @@ tbody tr:hover {
 }
 
 /* 連續抽取選項 */
+/* 全局抽獎設定 */
+.global-lottery-options {
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
 .continuous-mode-option {
     justify-content: center;
-    margin: 1rem 0;
+    margin: 0;
     display: flex;
     gap: 1.5rem;
     flex-wrap: wrap;
@@ -825,6 +834,55 @@ tbody tr:hover {
     margin-bottom: 1rem;
     color: var(--primary-color);
     font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.reload-icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    opacity: 0.7;
+}
+
+.reload-icon-btn:hover {
+    color: var(--primary-color);
+    opacity: 1;
+    background: rgba(145, 70, 255, 0.1);
+    transform: rotate(180deg);
+}
+
+.reload-icon-btn:active {
+    transform: rotate(360deg);
+}
+
+.reload-icon-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 載入動畫 */
+.reload-icon-btn.loading {
+    animation: spin 1s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .winner-header {
@@ -994,11 +1052,13 @@ tbody tr:hover {
     border: 2px solid var(--primary-color);
     border-radius: 16px;
     padding: 2rem;
-    max-width: 600px;
+    max-width: 600px; /* 與 .card 相同寬度 */
     max-height: 90vh;
     width: 90%;
     text-align: center;
     overflow-y: auto;
+    overflow-x: hidden; /* 防止橫向滾動條 */
+    box-sizing: border-box; /* 確保 padding 包含在寬度內 */
 }
 
 .overlay-content h2 {
@@ -1012,14 +1072,18 @@ tbody tr:hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 2rem;
+    gap: 1rem; /* 進一步減少間距以適應 600px 容器 */
     min-height: 300px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    flex-wrap: nowrap; /* 確保不換行 */
 }
 
 .digit-container {
     display: flex;
     justify-content: center;
-    gap: 1rem;
+    gap: 0.75rem; /* 稍微減少間距以適應 600px 容器 */
     flex-shrink: 0;
 }
 
@@ -1028,8 +1092,12 @@ tbody tr:hover {
     display: none; /* 初始隱藏 */
     flex-direction: column;
     gap: 0.5rem;
-    width: 150px;
+    width: 130px; /* 稍微縮小以適應 600px 容器 */
+    min-width: 100px; /* 最小寬度，確保內容可讀 */
+    max-width: 130px; /* 最大寬度 */
+    flex-shrink: 1; /* 允許縮小以適應容器 */
     animation: fadeInSlide 0.5s ease-out;
+    box-sizing: border-box;
 }
 
 @keyframes fadeInSlide {
@@ -1433,6 +1501,28 @@ tbody tr:hover {
 
     .overlay-content h2 {
         font-size: 1.5rem;
+    }
+}
+
+/* 中等螢幕優化（768px - 1024px） */
+@media (max-width: 1024px) and (min-width: 769px) {
+    .overlay-content {
+        max-width: 700px;
+        padding: 1.5rem;
+    }
+    
+    .result-display {
+        gap: 0.75rem; /* 進一步減少間距 */
+    }
+    
+    .candidates-list {
+        width: 130px; /* 稍微縮小候選名單 */
+        min-width: 95px;
+        max-width: 130px;
+    }
+    
+    .digit-container {
+        gap: 0.5rem; /* 減少數字之間的間距 */
     }
 }
 
@@ -1900,6 +1990,16 @@ tbody tr:hover {
 
 .btn-danger:active {
     transform: translateY(0);
+}
+
+.sidebar-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.sidebar-actions .btn-full {
+    flex: 1;
 }
 
 .btn-full {

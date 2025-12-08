@@ -145,6 +145,24 @@
                         <!-- 動態生成的分頁按鈕 -->
                     </div>
 
+                    <!-- 全局抽獎設定 -->
+                    <div class="global-lottery-options">
+                        <div class="continuous-mode-option">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="globalContinuousMode" onchange="toggleGlobalContinuousMode(this.checked)">
+                                <span>連續抽取（移除已中獎選項）</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="globalSkipShrinkMode" onchange="toggleGlobalSkipShrinkMode(this.checked)">
+                                <span>跳過縮圈（直接顯示結果）</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="globalNoOverlayMode" onchange="toggleGlobalNoOverlayMode(this.checked)">
+                                <span>無彈窗模式</span>
+                            </label>
+                        </div>
+                    </div>
+
                     <!-- 分頁內容 -->
                     <div class="tab-content" id="tabContent">
                         <!-- 動態生成的分頁內容 -->
@@ -162,7 +180,10 @@
                     <div id="winnersList" class="winners-list-sidebar">
                         <p class="empty-message">尚無中獎記錄</p>
                     </div>
-                    <button id="clearAllWinners" class="btn-danger btn-full">清空全部</button>
+                    <div class="sidebar-actions">
+                        <button id="copyWinnersBtn" class="btn-primary btn-full">複製</button>
+                        <button id="clearAllWinners" class="btn-danger btn-full">清空全部</button>
+                    </div>
                 </div>
             </div>
         </div>
