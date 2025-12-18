@@ -685,11 +685,30 @@ async function getCustomRewards() {
         }
         
         const data = await response.json();
-        // 按照 cost 值從小到大排序
+        // 按照 title 開頭的數字排序，不符合條件的排在後面
         const sortedData = data.data.sort((a, b) => {
-            const costA = a.cost || 0;
-            const costB = b.cost || 0;
-            return costA - costB;
+            const matchA = a.title?.match(/^\d+/);
+            const matchB = b.title?.match(/^\d+/);
+            
+            // 如果兩者都有數字開頭，按照數字排序
+            if (matchA && matchB) {
+                const numA = parseInt(matchA[0], 10);
+                const numB = parseInt(matchB[0], 10);
+                return numA - numB;
+            }
+            
+            // 如果只有 A 有數字開頭，A 排在前面
+            if (matchA && !matchB) {
+                return -1;
+            }
+            
+            // 如果只有 B 有數字開頭，B 排在前面
+            if (!matchA && matchB) {
+                return 1;
+            }
+            
+            // 兩者都沒有數字開頭，保持原順序
+            return 0;
         });
         return sortedData;
     } catch (error) {
