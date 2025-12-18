@@ -685,7 +685,13 @@ async function getCustomRewards() {
         }
         
         const data = await response.json();
-        return data.data;
+        // 按照 cost 值從小到大排序
+        const sortedData = data.data.sort((a, b) => {
+            const costA = a.cost || 0;
+            const costB = b.cost || 0;
+            return costA - costB;
+        });
+        return sortedData;
     } catch (error) {
         throw error;
     }
