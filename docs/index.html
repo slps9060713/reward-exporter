@@ -153,14 +153,30 @@
                                 <span>連續抽取（移除已中獎選項）</span>
                             </label>
                             <label class="checkbox-label">
+                                <input type="checkbox" id="globalTailNumberStats" onchange="toggleTailNumberStats(this.checked)">
+                                <span>尾數統計</span>
+                            </label>                            
+                            <label class="checkbox-label">
                                 <input type="checkbox" id="globalSkipShrinkMode" onchange="toggleGlobalSkipShrinkMode(this.checked)">
-                                <span>跳過縮圈（直接顯示結果）</span>
-                            </label>
+                                <span>跳過縮圈</span>
+                            </label>                
                             <label class="checkbox-label">
                                 <input type="checkbox" id="globalNoOverlayMode" onchange="toggleGlobalNoOverlayMode(this.checked)">
                                 <span>無彈窗模式</span>
                             </label>
                         </div>
+                        <div class="continuous-mode-option" style="margin-top: 1rem;">
+
+                        </div>
+                    </div>
+                    
+                    <!-- 尾數統計顯示 -->
+                    <div id="tailNumberStatsDisplay" class="tail-number-stats-display" style="display: none;">
+                        <span class="stat-item" data-range="0-1">[0-1] : <span class="stat-value">0</span></span>
+                        <span class="stat-item" data-range="2-3">[2-3] : <span class="stat-value">0</span></span>
+                        <span class="stat-item" data-range="4-5">[4-5] : <span class="stat-value">0</span></span>
+                        <span class="stat-item" data-range="6-7">[6-7] : <span class="stat-value">0</span></span>
+                        <span class="stat-item" data-range="8-9">[8-9] : <span class="stat-value">0</span></span>
                     </div>
 
                     <!-- 分頁內容 -->
@@ -299,10 +315,10 @@
         <p id="devTrigger" class="dev-trigger">MrLo頻道用獎勵抽獎系統(使用 Twitch API) </p>
         <p>Copyright © 2025. All rights reserved - Made by 1945【🏀足球(Baseball)模式】</p>
         <br>
-        <p>「為什麼我今天買得起48萬的泰迪回放選項呢，那是因為我不亂買一些表情跟丟水溝，</p>
-        <p>每周都勤奮跟台，每個月可以賺6000泰迪。</p>
-        <p>每次跟台不忘點跳出來的50泰迪，加上連續觀看bonus細水長流再入帳7000多泰迪。</p>
-        <p>最後再加上我上次買5車中的60萬泰迪，才勉強買得起。共勉之」</p>
+        <p>「為什麼我今天買得起48萬的Teddy回放選項呢，那是因為我不亂買一些表情跟丟水溝，</p>
+        <p>每周都勤奮跟台，每個月可以賺6000Teddy。</p>
+        <p>每次跟台不忘點跳出來的50Teddy，加上連續觀看bonus細水長流再入帳7000多。</p>
+        <p>最後再加上我上次買5車中的60萬Teddy，才勉強買得起。共勉之」</p>
     </div>
 
     <!-- 開發者 OAuth Token 輸入面板 -->

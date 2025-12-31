@@ -681,16 +681,17 @@ tbody tr:hover {
 }
 
 .tab-btn {
-    padding: 0.75rem 1.5rem;
+    padding: 0.2rem;
     background: transparent;
     color: var(--text-secondary);
     border: none;
     border-bottom: 3px solid transparent;
     cursor: pointer;
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
     transition: all 0.2s ease;
     margin-bottom: -2px;
+    width: 24%;
 }
 
 .tab-btn:hover {
@@ -902,14 +903,21 @@ tbody tr:hover {
 }
 
 .id-item {
-    padding: 0.5rem 0.75rem;
-    margin-bottom: 0.5rem;
+    padding: 0.4rem;
+    margin-bottom: 0.2rem;
     background: var(--card-background);
     border: 1px solid var(--border-color);
     border-radius: 6px;
     font-family: 'Courier New', monospace;
-    font-size: 1rem;
+    font-size: 0.95rem;
     transition: all 0.3s ease;
+}
+
+.id-item-user-input {
+    color: #edff54;
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+    font-family: 'Courier New', monospace;
 }
 
 /* 已移除刪除線功能 */
@@ -1952,10 +1960,23 @@ tbody tr:hover {
 
 .winner-user-info {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
     color: var(--text-secondary);
     font-size: 0.85rem;
+}
+
+.winner-user-main {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.winner-user-input {
+    color: #edff54;
+    font-size: 0.85rem;
+    font-family: 'Courier New', monospace;
 }
 
 .winner-user-id {
@@ -2006,6 +2027,42 @@ tbody tr:hover {
     width: 100%;
 }
 
+/* 尾數統計顯示 */
+.tail-number-stats-display {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+}
+
+.tail-number-stats-display .stat-item {
+    font-size: 0.9rem;
+    color: var(--text-color);
+    white-space: nowrap;
+}
+
+.tail-number-stats-display .stat-value {
+    font-weight: 700;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    display: inline-block;
+    min-width: 1.2em;
+    text-align: center;
+}
+
+.tail-number-stats-display .stat-value.highlight-max {
+    color: #ffd700;
+    font-weight: 900;
+    font-size: 1.1rem;
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+}
+
 /* 響應式設計 */
 @media (max-width: 768px) {
     .winners-sidebar {
@@ -2016,6 +2073,24 @@ tbody tr:hover {
         left: -35px;
         width: 35px;
         height: 70px;
+    }
+    
+    .tail-number-stats-display {
+        margin-top: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        gap: 0.75rem;
+    }
+    
+    .tail-number-stats-display .stat-item {
+        font-size: 0.8rem;
+    }
+    
+    .tail-number-stats-display .stat-value {
+        font-size: 0.9rem;
+    }
+    
+    .tail-number-stats-display .stat-value.highlight-max {
+        font-size: 1rem;
     }
 }
 

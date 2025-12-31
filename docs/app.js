@@ -16,6 +16,8 @@ let continuousMode = false; // 是否啟用連續抽取模式
 let drawnWinners = {}; // 記錄每個分頁已中獎的 ID {tabId: [winnerId1, winnerId2, ...]}
 let skipShrinkMode = false; // 是否跳過縮圈（直接顯示結果）
 let noOverlayMode = false; // 無彈窗模式（在輪盤區域直接縮圈）
+let tailNumberStatsEnabled = false; // 是否啟用尾數統計
+let tailNumberStats = { '0-1': 0, '2-3': 0, '4-5': 0, '6-7': 0, '8-9': 0 }; // 尾數統計數據
 
 // 音效系統
 let audioContext = null;
@@ -502,7 +504,7 @@ function toggleWinnersSidebar() {
 }
 
 // 添加中獎者到右側列表
-function addWinnerToSidebar(rewardName, userId, userName) {
+function addWinnerToSidebar(rewardName, userId, userName, userInput) {
     // 避免重複添加（檢查是否已存在相同的獎項+用戶組合）
     const isDuplicate = winnersRecord.some(
         record => record.rewardName === rewardName && record.userId === userId
@@ -518,11 +520,12 @@ function addWinnerToSidebar(rewardName, userId, userName) {
         rewardName,
         userId,
         userName,
+        userInput: userInput || '',
         timestamp: Date.now()
     };
     winnersRecord.push(winnerData);
     
-    // 更新顯示
+    // 更新顯示（會自動更新尾數統計）
     renderWinnersSidebar();
 }
 
@@ -530,26 +533,34 @@ function addWinnerToSidebar(rewardName, userId, userName) {
 function renderWinnersSidebar() {
     if (winnersRecord.length === 0) {
         winnersList.innerHTML = '<p class="empty-message">尚無中獎記錄</p>';
-        return;
+    } else {
+        winnersList.innerHTML = winnersRecord.map(winner => `
+            <div class="winner-entry" data-winner-id="${winner.id}">
+                <div class="winner-entry-header">
+                    <span class="reward-name">${winner.rewardName}</span>
+                    <button class="remove-winner-btn" onclick="removeWinnerFromSidebar(${winner.id})" title="移除此記錄">✕</button>
+                </div>
+                <div class="winner-user-info">
+                    <div class="winner-user-main">
+                        <span class="winner-user-id">${winner.userId}</span>
+                        <span class="winner-user-name">${winner.userName || ''}</span>
+                    </div>
+                    ${winner.userInput && winner.userInput.trim() ? `<span class="winner-user-input">${winner.userInput}</span>` : ''}
+                </div>
+            </div>
+        `).join('');
     }
     
-    winnersList.innerHTML = winnersRecord.map(winner => `
-        <div class="winner-entry" data-winner-id="${winner.id}">
-            <div class="winner-entry-header">
-                <span class="reward-name">${winner.rewardName}</span>
-                <button class="remove-winner-btn" onclick="removeWinnerFromSidebar(${winner.id})" title="移除此記錄">✕</button>
-            </div>
-            <div class="winner-user-info">
-                <span class="winner-user-id">${winner.userId}</span>
-                <span class="winner-user-name">${winner.userName || ''}</span>
-            </div>
-        </div>
-    `).join('');
+    // 更新尾數統計（與中獎名單同步）
+    if (tailNumberStatsEnabled) {
+        calculateTailNumberStats();
+    }
 }
 
 // 移除單個中獎者
 function removeWinnerFromSidebar(winnerId) {
     winnersRecord = winnersRecord.filter(w => w.id !== winnerId);
+    // 更新顯示（會自動更新尾數統計）
     renderWinnersSidebar();
 }
 
@@ -560,9 +571,15 @@ async function handleCopyWinners() {
         return;
     }
     
-    // 格式化數據：rewardName userName（每行一個）
+    // 格式化數據：rewardName userName userInput（每行一個）
     const formattedText = winnersRecord
-        .map(winner => `${winner.rewardName} ${winner.userName}`)
+        .map(winner => {
+            let line = `${winner.rewardName} ${winner.userName}`;
+            if (winner.userInput && winner.userInput.trim()) {
+                line += ` ${winner.userInput}`;
+            }
+            return line;
+        })
         .join('\n');
     
     try {
@@ -607,6 +624,7 @@ function handleClearAllWinners() {
     
     if (confirm('確定要清空所有中獎記錄嗎？')) {
         winnersRecord = [];
+        // 更新顯示（會自動更新尾數統計）
         renderWinnersSidebar();
     }
 }
@@ -918,6 +936,13 @@ async function createTabs() {
     
     // 加入自定義分頁
     createCustomTab();
+    
+    // 如果尾數統計已啟用，創建統計表格
+    if (tailNumberStatsEnabled) {
+        setTimeout(() => {
+            createTailNumberStatsTable();
+        }, 50);
+    }
 }
 
 // 載入特定獎勵的兌換記錄
@@ -938,7 +963,8 @@ async function loadRedemptionsForTab(tabId) {
         
         tabData.participants = redemptions.map((r, index) => ({
             id: String(index + 1).padStart(3, '0'),
-            username: r.user_name
+            username: r.user_name,
+            userInput: r.user_input || ''
         }));
         tabData.loaded = true;
         
@@ -993,11 +1019,32 @@ async function loadRedemptionsForTab(tabId) {
             item.className = 'id-item';
             item.dataset.id = participant.id;
             item.dataset.username = participant.username;
-            item.textContent = `${participant.id} - ${participant.username}`;
+            
+            // 創建主要內容容器
+            const mainContent = document.createElement('div');
+            mainContent.className = 'id-item-main';
+            mainContent.textContent = `${participant.id} - ${participant.username}`;
+            item.appendChild(mainContent);
+            
+            // 如果有 user_input，添加顯示
+            if (participant.userInput && participant.userInput.trim()) {
+                const userInputSpan = document.createElement('div');
+                userInputSpan.className = 'id-item-user-input';
+                userInputSpan.textContent = participant.userInput;
+                item.appendChild(userInputSpan);
+            }
+            
             idList.appendChild(item);
         });
         
         oldPanel.parentNode.replaceChild(newPanel, oldPanel);
+        
+        // 如果尾數統計已啟用，創建統計表格
+        if (tailNumberStatsEnabled) {
+            setTimeout(() => {
+                createTailNumberStatsTable();
+            }, 50);
+        }
         
     } catch (error) {
         console.error('載入失敗:', error);
@@ -1020,7 +1067,7 @@ function createCustomTab() {
     
     const customTab = {
         id: 'custom',
-        title: '自定義',
+        title: '僅抽號碼',
         isCustom: true
     };
     
@@ -1163,6 +1210,19 @@ function loadGlobalLotteryOptions() {
         const checkbox = document.getElementById('globalNoOverlayMode');
         if (checkbox) checkbox.checked = noOverlayMode;
     }
+    
+    const savedTailStats = localStorage.getItem('globalTailNumberStats');
+    if (savedTailStats !== null) {
+        tailNumberStatsEnabled = savedTailStats === 'true';
+        const checkbox = document.getElementById('globalTailNumberStats');
+        if (checkbox) checkbox.checked = tailNumberStatsEnabled;
+        // 延遲創建表格，等待分頁創建完成
+        setTimeout(() => {
+            if (tailNumberStatsEnabled) {
+                createTailNumberStatsTable();
+            }
+        }, 100);
+    }
 }
 
 // 全局連續模式切換
@@ -1220,6 +1280,98 @@ function toggleNoOverlayMode(checked) {
     toggleGlobalNoOverlayMode(checked);
 }
 
+// 切換尾數統計
+function toggleTailNumberStats(checked) {
+    tailNumberStatsEnabled = checked;
+    localStorage.setItem('globalTailNumberStats', checked.toString());
+    
+    if (checked) {
+        createTailNumberStatsTable();
+        // 立即計算並顯示統計
+        calculateTailNumberStats();
+    } else {
+        removeTailNumberStatsTable();
+    }
+}
+
+// 創建尾數統計顯示
+function createTailNumberStatsTable() {
+    const statsDisplay = document.getElementById('tailNumberStatsDisplay');
+    if (statsDisplay) {
+        statsDisplay.style.display = 'block';
+        // 計算並顯示統計
+        calculateTailNumberStats();
+    }
+}
+
+// 移除尾數統計顯示
+function removeTailNumberStatsTable() {
+    const statsDisplay = document.getElementById('tailNumberStatsDisplay');
+    if (statsDisplay) {
+        statsDisplay.style.display = 'none';
+    }
+}
+
+// 從中獎名單計算尾數統計
+function calculateTailNumberStats() {
+    // 重置統計
+    tailNumberStats = { '0-1': 0, '2-3': 0, '4-5': 0, '6-7': 0, '8-9': 0 };
+    
+    // 遍歷中獎名單，計算統計
+    winnersRecord.forEach(winner => {
+        const userId = winner.userId;
+        if (!userId) return;
+        
+        // 取得個位數
+        const lastDigit = parseInt(userId.slice(-1), 10);
+        
+        // 根據個位數分類到對應區間
+        if (lastDigit <= 1) {
+            tailNumberStats['0-1']++;
+        } else if (lastDigit <= 3) {
+            tailNumberStats['2-3']++;
+        } else if (lastDigit <= 5) {
+            tailNumberStats['4-5']++;
+        } else if (lastDigit <= 7) {
+            tailNumberStats['6-7']++;
+        } else {
+            tailNumberStats['8-9']++;
+        }
+    });
+    
+    // 更新顯示
+    updateTailNumberStatsDisplay();
+}
+
+// 更新尾數統計顯示
+function updateTailNumberStatsDisplay() {
+    if (!tailNumberStatsEnabled) return;
+    
+    const statsDisplay = document.getElementById('tailNumberStatsDisplay');
+    if (!statsDisplay) return;
+    
+    // 找出最大值
+    const values = Object.values(tailNumberStats);
+    const maxValue = Math.max(...values);
+    
+    // 更新所有統計項目的數字
+    const statItems = statsDisplay.querySelectorAll('.stat-item');
+    statItems.forEach(item => {
+        const range = item.dataset.range;
+        const value = tailNumberStats[range] || 0;
+        const valueSpan = item.querySelector('.stat-value');
+        if (valueSpan) {
+            valueSpan.textContent = value;
+            // 移除高亮
+            valueSpan.classList.remove('highlight-max');
+            // 如果是最大值，添加高亮
+            if (value === maxValue && maxValue > 0) {
+                valueSpan.classList.add('highlight-max');
+            }
+        }
+    });
+}
+
 // 處理連續模式下的中獎項（跳過縮圈時使用）
 // 處理中獎邏輯（所有模式通用）
 function handleWinner(tabId, winnerNumber) {
@@ -1246,11 +1398,18 @@ function handleWinner(tabId, winnerNumber) {
     
     // 獲取獎項名稱和用戶資訊
     const rewardName = getRewardNameByTabId(tabId);
-    const userName = winnerItem.dataset.username || winnerItem.textContent.trim();
+    // 從新的結構中獲取用戶名
+    const mainContent = winnerItem.querySelector('.id-item-main');
+    const userName = winnerItem.dataset.username || (mainContent ? mainContent.textContent.split(' - ')[1] : winnerItem.textContent.trim());
+    
+    // 獲取 user_input
+    const userInputElement = winnerItem.querySelector('.id-item-user-input');
+    const userInput = userInputElement ? userInputElement.textContent.trim() : '';
     
     // 所有模式：添加到右側中獎列表（僅登入模式）
+    // 注意：尾數統計會在 addWinnerToSidebar 中自動更新
     if (currentToken && rewardName) {
-        addWinnerToSidebar(rewardName, winnerNumber, userName);
+        addWinnerToSidebar(rewardName, winnerNumber, userName, userInput);
     }
     
     // 所有模式：添加到左側已中獎列表
@@ -1317,7 +1476,8 @@ async function reloadRedemptionsForTab(tabId) {
         
         tabData.participants = redemptions.map((r, index) => ({
             id: String(index + 1).padStart(3, '0'),
-            username: r.user_name
+            username: r.user_name,
+            userInput: r.user_input || ''
         }));
         
         // 更新 ID 列表
@@ -1338,7 +1498,21 @@ async function reloadRedemptionsForTab(tabId) {
                 item.className = 'id-item';
                 item.dataset.id = participant.id;
                 item.dataset.username = participant.username;
-                item.textContent = `${participant.id} - ${participant.username}`;
+                
+                // 創建主要內容容器
+                const mainContent = document.createElement('div');
+                mainContent.className = 'id-item-main';
+                mainContent.textContent = `${participant.id} - ${participant.username}`;
+                item.appendChild(mainContent);
+                
+                // 如果有 user_input，添加顯示
+                if (participant.userInput && participant.userInput.trim()) {
+                    const userInputSpan = document.createElement('div');
+                    userInputSpan.className = 'id-item-user-input';
+                    userInputSpan.textContent = participant.userInput;
+                    item.appendChild(userInputSpan);
+                }
+                
                 idList.appendChild(item);
             });
         }
@@ -1757,9 +1931,19 @@ function showCandidatesList(revealedDigits, idList) {
     items.forEach(item => {
         const id = item.dataset.id;
         if (id.startsWith(prefix)) {
-            const fullText = item.textContent.trim();
-            const parts = fullText.split(' - ');
-            const username = parts.length > 1 ? parts[1] : null; // 只有在有分隔符時才取用戶名
+            // 從新的結構中獲取用戶名
+            const mainContent = item.querySelector('.id-item-main');
+            let username = null;
+            if (mainContent) {
+                const fullText = mainContent.textContent.trim();
+                const parts = fullText.split(' - ');
+                username = parts.length > 1 ? parts[1] : null;
+            } else {
+                // 向後兼容：如果沒有新的結構，使用舊的方式
+                const fullText = item.textContent.trim();
+                const parts = fullText.split(' - ');
+                username = parts.length > 1 ? parts[1] : null;
+            }
             
             candidates.push({
                 id: id,
