@@ -582,9 +582,12 @@ async function handleCopyWinners() {
         })
         .join('\n');
     
+    // 在內容前後加上 ``` 以用於 Discord
+    const textWithCodeBlock = `\`\`\`\n${formattedText}\n\`\`\``;
+    
     try {
         // 使用 Clipboard API 複製到剪貼板
-        await navigator.clipboard.writeText(formattedText);
+        await navigator.clipboard.writeText(textWithCodeBlock);
         
         // 顯示成功提示
         const originalText = copyWinnersBtn.textContent;
