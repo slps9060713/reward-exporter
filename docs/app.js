@@ -503,6 +503,14 @@ function toggleWinnersSidebar() {
     winnersSidebar.classList.toggle('collapsed');
 }
 
+// 轉義 HTML 防止 XSS
+function escapeHtml(str) {
+    if (str == null || typeof str !== 'string') return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 // 添加中獎者到右側列表
 function addWinnerToSidebar(rewardName, userId, userName, userInput) {
     // 避免重複添加（檢查是否已存在相同的獎項+用戶組合）
@@ -534,21 +542,28 @@ function renderWinnersSidebar() {
     if (winnersRecord.length === 0) {
         winnersList.innerHTML = '<p class="empty-message">尚無中獎記錄</p>';
     } else {
-        winnersList.innerHTML = winnersRecord.map(winner => `
+        winnersList.innerHTML = winnersRecord.map(winner => {
+            const safeRewardName = escapeHtml(winner.rewardName || '');
+            const safeUserId = escapeHtml(winner.userId || '');
+            const safeUserName = escapeHtml(winner.userName || '');
+            const safeUserInput = escapeHtml(winner.userInput || '');
+            const userInputHtml = safeUserInput.trim() ? `<span class="winner-user-input">${safeUserInput}</span>` : '';
+            return `
             <div class="winner-entry" data-winner-id="${winner.id}">
                 <div class="winner-entry-header">
-                    <span class="reward-name">${winner.rewardName}</span>
+                    <span class="reward-name">${safeRewardName}</span>
                     <button class="remove-winner-btn" onclick="removeWinnerFromSidebar(${winner.id})" title="移除此記錄">✕</button>
                 </div>
                 <div class="winner-user-info">
                     <div class="winner-user-main">
-                        <span class="winner-user-id">${winner.userId}</span>
-                        <span class="winner-user-name">${winner.userName || ''}</span>
+                        <span class="winner-user-id">${safeUserId}</span>
+                        <span class="winner-user-name">${safeUserName}</span>
                     </div>
-                    ${winner.userInput && winner.userInput.trim() ? `<span class="winner-user-input">${winner.userInput}</span>` : ''}
+                    ${userInputHtml}
                 </div>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
     
     // 更新尾數統計（與中獎名單同步）

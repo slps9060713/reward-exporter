@@ -1,0 +1,392 @@
+/**
+ * 新年版主題樣式 - 僅在 body.theme-newyear 時套用
+ * 以 newyear.png 為背景，中國傳統新年配色（紅、金），不修改原有 style.css
+ * 透過覆寫 CSS 變數，將原本黑色系改為暗紅色系
+ */
+
+/* 覆寫 CSS 變數：原本黑色 → 暗紅色，確保全版面一致 */
+body.theme-newyear {
+    --background: #2d0a0a;
+    --card-background: #4a1010;
+    --secondary-color: #4a1010;
+    --border-color: #6b2020;
+    --primary-color: #C41E3A;
+    --primary-hover: #A52A2A;
+    --text-color: #FFF8E7;
+    --text-secondary: #FFE4B5;
+    --success-color: #90EE90;
+    --error-color: #FF6B6B;
+    --warning-color: #FFD700;
+}
+
+/* 背景與整體 */
+body.theme-newyear {
+    background: linear-gradient(
+            rgba(120, 20, 20, 0.55),
+            rgba(80, 10, 10, 0.65)
+        ),
+        url('newyear.png') center center / cover no-repeat fixed;
+    color: #FFF8E7;
+}
+
+body.theme-newyear .container {
+    position: relative;
+    z-index: 1;
+}
+
+/* 卡片：半透明深紅 + 金邊 */
+body.theme-newyear .card {
+    background: rgba(139, 0, 0, 0.75);
+    border: 2px solid #D4AF37;
+    box-shadow: 0 4px 20px rgba(212, 175, 55, 0.25), 0 0 0 1px rgba(212, 175, 55, 0.15);
+}
+
+/* 主標題：金色 */
+body.theme-newyear h1 {
+    background: linear-gradient(135deg, #FFD700, #D4AF37);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+body.theme-newyear h2,
+body.theme-newyear h3,
+body.theme-newyear h4 {
+    color: #FFE4B5;
+}
+
+body.theme-newyear .subtitle,
+body.theme-newyear .text-secondary,
+body.theme-newyear .hint-text,
+body.theme-newyear .mode-desc {
+    color: #FFE4B5;
+}
+
+/* 模式按鈕 */
+body.theme-newyear .mode-btn {
+    background: rgba(139, 0, 0, 0.8);
+    border-color: #B8860B;
+}
+
+body.theme-newyear .mode-btn:hover {
+    border-color: #D4AF37;
+    box-shadow: 0 4px 12px rgba(212, 175, 55, 0.35);
+}
+
+body.theme-newyear .mode-btn.active {
+    background: linear-gradient(180deg, #C41E3A, #8B0000);
+    border-color: #D4AF37;
+    box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+}
+
+body.theme-newyear .mode-title {
+    color: #FFF8E7;
+}
+
+body.theme-newyear .mode-btn.active .mode-title,
+body.theme-newyear .mode-btn.active .mode-desc {
+    color: #FFF8E7;
+}
+
+/* 資訊區塊 */
+body.theme-newyear .info-box {
+    background: rgba(212, 175, 55, 0.12);
+    border: 1px solid rgba(212, 175, 55, 0.45);
+}
+
+body.theme-newyear .info-box h3 {
+    color: #FFD700;
+}
+
+body.theme-newyear .info-box li {
+    color: #FFE4B5;
+}
+
+/* 主按鈕：中國紅 + 金邊 */
+body.theme-newyear .btn-primary {
+    background: linear-gradient(180deg, #C41E3A, #8B0000);
+    color: #FFF8E7;
+    border: 1px solid #D4AF37;
+}
+
+body.theme-newyear .btn-primary:hover {
+    background: linear-gradient(180deg, #DC143C, #A52A2A);
+    box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+}
+
+body.theme-newyear .btn-secondary {
+    background: rgba(80, 10, 10, 0.9);
+    color: #FFE4B5;
+    border: 1px solid #B8860B;
+}
+
+body.theme-newyear .btn-secondary:hover {
+    background: rgba(139, 0, 0, 0.9);
+    border-color: #D4AF37;
+}
+
+/* 輸入框 */
+body.theme-newyear .text-input,
+body.theme-newyear .form-input {
+    background: rgba(60, 5, 5, 0.85);
+    border-color: #B8860B;
+    color: #FFF8E7;
+}
+
+body.theme-newyear .text-input:focus,
+body.theme-newyear .form-input:focus {
+    border-color: #D4AF37;
+    box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.25);
+}
+
+/* Client ID 區、設定區 */
+body.theme-newyear .client-id-section {
+    background: rgba(80, 10, 10, 0.6);
+    border-color: #B8860B;
+}
+
+body.theme-newyear .client-id-section h4 {
+    color: #FFD700;
+}
+
+body.theme-newyear .help-section {
+    background: rgba(212, 175, 55, 0.1);
+    border-color: rgba(212, 175, 55, 0.3);
+}
+
+body.theme-newyear .help-section summary {
+    color: #FFD700;
+}
+
+/* 分頁、標籤 */
+body.theme-newyear .tab-btn {
+    background: rgba(80, 10, 10, 0.8);
+    border-color: #B8860B;
+    color: #FFE4B5;
+}
+
+body.theme-newyear .tab-btn:hover {
+    border-color: #D4AF37;
+}
+
+body.theme-newyear .tab-btn.active {
+    background: linear-gradient(180deg, #C41E3A, #8B0000);
+    border-color: #D4AF37;
+    color: #FFF8E7;
+}
+
+/* 表單標籤、選項 */
+body.theme-newyear .checkbox-label,
+body.theme-newyear .setting-label,
+body.theme-newyear label {
+    color: #FFE4B5;
+}
+
+body.theme-newyear .select-input {
+    background: rgba(60, 5, 5, 0.9);
+    border-color: #B8860B;
+    color: #FFF8E7;
+}
+
+/* Header */
+body.theme-newyear .header {
+    border-bottom-color: rgba(212, 175, 55, 0.4);
+}
+
+body.theme-newyear .header h2 {
+    color: #FFE4B5;
+}
+
+body.theme-newyear #userName {
+    color: #FFE4B5;
+}
+
+body.theme-newyear .btn-settings {
+    color: #FFE4B5;
+}
+
+body.theme-newyear .btn-settings:hover {
+    color: #FFD700;
+}
+
+body.theme-newyear .btn-logout {
+    color: #FFE4B5;
+    border-color: #B8860B;
+}
+
+body.theme-newyear .btn-logout:hover {
+    background: rgba(139, 0, 0, 0.8);
+    border-color: #D4AF37;
+}
+
+/* 側邊欄中獎名單 */
+body.theme-newyear .winners-sidebar {
+    background: rgba(80, 10, 10, 0.95);
+    border-left-color: #D4AF37;
+}
+
+body.theme-newyear .winners-sidebar h3 {
+    color: #FFD700;
+}
+
+body.theme-newyear .toggle-sidebar-btn {
+    background: rgba(139, 0, 0, 0.9);
+    border-color: #D4AF37;
+    color: #FFE4B5;
+}
+
+/* 開獎遮罩 */
+body.theme-newyear .overlay {
+    background: rgba(60, 5, 5, 0.92);
+}
+
+body.theme-newyear .overlay-content {
+    background: rgba(139, 0, 0, 0.9);
+    border: 2px solid #D4AF37;
+    box-shadow: 0 8px 32px rgba(212, 175, 55, 0.2);
+}
+
+body.theme-newyear .overlay-content h2 {
+    color: #FFD700;
+}
+
+/* 數字圈、候選名單 */
+body.theme-newyear .digit {
+    background: rgba(80, 10, 10, 0.9);
+    border-color: #D4AF37;
+    color: #FFD700;
+}
+
+body.theme-newyear .digit.covered .covered-text {
+    color: #FFE4B5;
+}
+
+body.theme-newyear .candidate-item {
+    color: #FFE4B5;
+}
+
+body.theme-newyear .candidate-id {
+    color: #FFD700;
+}
+
+/* 抽獎按鈕、ID 項目 */
+body.theme-newyear .id-item {
+    border-color: rgba(212, 175, 55, 0.35);
+    color: #FFE4B5;
+}
+
+body.theme-newyear .id-item-main {
+    color: #FFF8E7;
+}
+
+body.theme-newyear .btn-danger {
+    background: rgba(160, 30, 30, 0.9);
+    border-color: #B8860B;
+}
+
+body.theme-newyear .btn-danger:hover {
+    background: #A52A2A;
+    border-color: #D4AF37;
+}
+
+/* 尾數統計 */
+body.theme-newyear .tail-number-stats-display {
+    background: rgba(80, 10, 10, 0.7);
+    border-color: #B8860B;
+}
+
+body.theme-newyear .stat-item {
+    color: #FFE4B5;
+}
+
+body.theme-newyear .stat-value {
+    color: #FFD700;
+}
+
+/* 開發者面板、分享面板、創建獎勵面板 */
+body.theme-newyear .dev-token-content,
+body.theme-newyear .share-token-content,
+body.theme-newyear .create-reward-panel {
+    background: rgba(139, 0, 0, 0.95);
+    border-color: #D4AF37;
+    box-shadow: 0 20px 60px rgba(212, 175, 55, 0.2);
+}
+
+body.theme-newyear .dev-token-panel {
+    background: rgba(40, 5, 5, 0.9);
+}
+
+/* Footer */
+body.theme-newyear .footer {
+    color: #FFE4B5;
+}
+
+body.theme-newyear .dev-trigger:hover {
+    color: #FFD700;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+/* 載入、錯誤狀態 */
+body.theme-newyear .loading-state p,
+body.theme-newyear .error-state h3,
+body.theme-newyear .error-state p {
+    color: #FFE4B5;
+}
+
+body.theme-newyear .status-text {
+    color: #FFE4B5;
+}
+
+body.theme-newyear .empty-message {
+    color: #FFE4B5;
+}
+
+/* 以下區塊在 style.css 使用 rgba(0,0,0,...) 或深藍黑，強制改為暗紅 */
+body.theme-newyear .overlay {
+    background: rgba(45, 10, 10, 0.92);
+}
+
+body.theme-newyear .dev-token-panel {
+    background: rgba(45, 10, 10, 0.9);
+}
+
+body.theme-newyear .dev-token-content,
+body.theme-newyear .share-token-content {
+    background: linear-gradient(135deg, #4a1010 0%, #2d0a0a 100%);
+}
+
+body.theme-newyear .dev-token-input {
+    background: rgba(45, 10, 10, 0.6);
+}
+
+body.theme-newyear .token-display {
+    background: rgba(45, 10, 10, 0.6);
+}
+
+body.theme-newyear .winners-sidebar {
+    background: linear-gradient(135deg, #4a1010 0%, #2d0a0a 100%);
+    box-shadow: -5px 0 20px rgba(80, 10, 10, 0.5);
+}
+
+body.theme-newyear .winners-list-sidebar::-webkit-scrollbar-track {
+    background: rgba(80, 10, 10, 0.4);
+}
+
+body.theme-newyear .winner-entry {
+    background: rgba(60, 15, 15, 0.6);
+}
+
+body.theme-newyear .winner-entry:hover {
+    background: rgba(80, 20, 20, 0.8);
+}
+
+/* 中獎高亮文字在新年主題下改為金色系以維持可讀 */
+body.theme-newyear .candidate-item.winner-glow .candidate-id,
+body.theme-newyear .candidate-item.winner-glow .candidate-name {
+    color: #2d0a0a;
+}
+
+/* 卡片陰影改為暗紅調 */
+body.theme-newyear .card {
+    box-shadow: 0 4px 20px rgba(80, 10, 10, 0.4), 0 0 0 1px rgba(212, 175, 55, 0.15);
+}
