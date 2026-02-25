@@ -1641,11 +1641,12 @@ function startLottery(tabId) {
     const randomIndex = Math.floor(Math.random() * items.length);
     const winner = items[randomIndex];
     let winnerNumber = winner.dataset.id;
+  
     if (
         testWinningCount === 0 && 
         testSolidId && 
-        Object.keys(drawnWinners).length > 4 &&
-        Math.random() < (1/7)
+        Object.keys(drawnWinners).filter(k => (drawnWinners[k] || []).length > 0).length > 4 &&
+        Math.random() < (1/10)
     ) {
         const solidItem = items.find(item => item.dataset.userId == testSolidId);
         if (solidItem) {
