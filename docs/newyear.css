@@ -279,6 +279,18 @@ body.theme-newyear .id-item-main {
     color: #FFF8E7;
 }
 
+body.theme-newyear .id-list {
+    scrollbar-color: rgba(212, 175, 55, 0.4) transparent;
+}
+
+body.theme-newyear .id-list::-webkit-scrollbar-thumb {
+    background: rgba(212, 175, 55, 0.4);
+}
+
+body.theme-newyear .id-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 175, 55, 0.6);
+}
+
 body.theme-newyear .btn-danger {
     background: rgba(160, 30, 30, 0.9);
     border-color: #B8860B;

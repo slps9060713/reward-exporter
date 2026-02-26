@@ -893,13 +893,24 @@ tbody tr:hover {
 .id-list {
     max-height: 500px;
     overflow-y: auto;
-    /* 隱藏 scrollbar 保持美觀 */
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE/Edge */
+    scrollbar-color: var(--text-secondary) transparent;
 }
 
 .id-list::-webkit-scrollbar {
-    display: none; /* Chrome/Safari/Opera */
+    width: 6px;
+}
+
+.id-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.id-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+.id-list::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
 }
 
 .id-item {
