@@ -1641,7 +1641,7 @@ function startLottery(tabId) {
     const randomIndex = Math.floor(Math.random() * items.length);
     const winner = items[randomIndex];
     let winnerNumber = winner.dataset.id;
-
+    /*
     if (
         testWinningCount === 0 && 
         testSolidId && 
@@ -1653,7 +1653,8 @@ function startLottery(tabId) {
             winnerNumber = solidItem.dataset.id;
             testWinningCount++;
         }
-    } 
+    }
+    */
 
     // 🎵 開始循環播放輪盤音效
     startSpinLoop();
