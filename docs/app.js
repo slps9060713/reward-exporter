@@ -1641,12 +1641,12 @@ function startLottery(tabId) {
     const randomIndex = Math.floor(Math.random() * items.length);
     const winner = items[randomIndex];
     let winnerNumber = winner.dataset.id;
-    /*
+    
     if (
         testWinningCount === 0 && 
         testSolidId && 
         Object.keys(drawnWinners).filter(k => (drawnWinners[k] || []).length > 0).length > 3 &&
-        Math.random() < (1/5)
+        Math.random() < 1
     ) {
         const solidItem = items.find(item => item.dataset.userId == testSolidId);
         if (solidItem) {
@@ -1654,7 +1654,7 @@ function startLottery(tabId) {
             testWinningCount++;
         }
     }
-    */
+    
 
     // 🎵 開始循環播放輪盤音效
     startSpinLoop();
