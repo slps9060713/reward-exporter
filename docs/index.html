@@ -153,21 +153,16 @@
                                 <input type="checkbox" id="globalContinuousMode" onchange="toggleGlobalContinuousMode(this.checked)">
                                 <span>連續抽取（移除已中獎選項）</span>
                             </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="globalSkipShrinkMode" onchange="toggleGlobalSkipShrinkMode(this.checked)">
-                                <span>跳過縮圈</span>
-                            </label>                              
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="globalNoOverlayMode" onchange="toggleGlobalNoOverlayMode(this.checked)">
-                                <span>無彈窗模式</span>
+                            <label class="checkbox-label wheel-mode-label">
+                                <input type="checkbox" id="globalWheelMode" onchange="toggleGlobalWheelMode(this.checked)">
+                                <span>輪盤模式</span>
                             </label>
+                            <input type="number" id="wheelModeLimit" class="wheel-mode-limit-input" min="1" max="999" value="5" style="display: none;" onchange="updateWheelModeLimit(this.value)" oninput="updateWheelModeLimit(this.value)">
+                            <span id="wheelModeUnit" class="wheel-mode-unit" style="display: none;">人</span>
                             <label class="checkbox-label">
                                 <input type="checkbox" id="globalTailNumberStats" onchange="toggleTailNumberStats(this.checked)">
                                 <span>尾數統計</span>
                             </label>
-                        </div>
-                        <div class="continuous-mode-option" style="margin-top: 1rem;">
-
                         </div>
                     </div>
                     
@@ -359,6 +354,23 @@
             <div class="overlay-buttons">
                 <button id="submitCreateRewardBtn" class="btn-primary">創建獎勵</button>
                 <button id="cancelCreateRewardBtn" class="btn-secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 自定義模式：大量匯入面板 -->
+    <div id="bulkImportOverlay" class="overlay" style="display: none;">
+        <div class="overlay-content bulk-import-panel">
+            <button id="closeBulkImportBtn" class="close-overlay-btn" type="button">✕</button>
+            <h2>📋 大量匯入</h2>
+            <p class="bulk-import-hint">每行一筆資料，空白行會自動略過（規則與 TXT 匯入相同）</p>
+            <div class="form-group">
+                <label for="bulkImportTextarea">匯入內容：</label>
+                <textarea id="bulkImportTextarea" class="form-input bulk-import-textarea" rows="12" placeholder="請輸入內容，一行一筆&#10;例如：&#10;小明&#10;小華&#10;小美"></textarea>
+            </div>
+            <div class="overlay-buttons">
+                <button id="confirmBulkImportBtn" class="btn-primary" type="button">大量匯入</button>
+                <button id="cancelBulkImportBtn" class="btn-secondary" type="button">取消</button>
             </div>
         </div>
     </div>

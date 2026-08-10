@@ -778,6 +778,7 @@ tbody tr:hover {
 
 .continuous-mode-option {
     justify-content: center;
+    align-items: center;
     margin: 0;
     display: flex;
     gap: 1.5rem;
@@ -808,6 +809,33 @@ tbody tr:hover {
 
 .checkbox-label span {
     flex: 1;
+}
+
+.wheel-mode-label {
+    margin-right: 0;
+}
+
+.wheel-mode-limit-input {
+    width: 64px;
+    padding: 0.35rem 0.45rem;
+    background: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-color);
+    font-size: 0.9rem;
+    text-align: center;
+    margin-left: -0.75rem;
+}
+
+.wheel-mode-limit-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.wheel-mode-unit {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-left: -1rem;
 }
 
 /* ID 列表 */
@@ -976,6 +1004,12 @@ tbody tr:hover {
     gap: 2rem;
 }
 
+.digit-wheel-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .wheel {
     width: 250px;
     height: 250px;
@@ -995,6 +1029,67 @@ tbody tr:hover {
     font-family: 'Courier New', monospace;
     color: var(--primary-color);
     text-shadow: 0 0 10px rgba(145, 70, 255, 0.5);
+}
+
+/* 圓餅輪盤 */
+.pie-wheel-area {
+    position: relative;
+    width: 260px;
+    height: 280px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.pie-pointer {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 12px solid transparent;
+    border-right: 12px solid transparent;
+    border-top: 22px solid #ffd166;
+    z-index: 3;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+}
+
+/* 外框固定不轉，避免邊框與 conic 疊出異色光暈 */
+.pie-wheel-frame {
+    width: 250px;
+    height: 250px;
+    border-radius: 50%;
+    border: 5px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 24px rgba(145, 70, 255, 0.4);
+    overflow: hidden;
+    background: #1a1a2e;
+    position: relative;
+    isolation: isolate;
+}
+
+.pie-wheel {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: none;
+    box-shadow: none;
+    position: relative;
+    overflow: hidden;
+    will-change: transform;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+}
+
+.pie-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.pie-svg text {
+    pointer-events: none;
+    user-select: none;
 }
 
 .wheel.spinning .wheel-number {
@@ -1026,29 +1121,154 @@ tbody tr:hover {
 /* 自定義模式輸入 */
 .custom-input-group {
     margin-bottom: 2rem;
-    text-align: center;
+    text-align: left;
 }
 
-.custom-input-group label {
-    display: block;
-    margin-bottom: 0.5rem;
+.custom-import-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 0.75rem;
+}
+
+.custom-import-row > label {
+    display: inline-block;
+    margin: 0;
     color: var(--text-secondary);
+    white-space: nowrap;
+    flex: 0 0 auto;
 }
 
-.custom-input-group input {
-    width: 150px;
-    padding: 0.75rem;
+.custom-input-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.4rem;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.custom-input-group input.custom-text-input {
+    flex: 1 1 180px;
+    min-width: 140px;
+    max-width: 360px;
+    width: auto;
+    padding: 0.45rem 0.7rem;
     background: var(--background);
     border: 1px solid var(--border-color);
     border-radius: 6px;
     color: var(--text-color);
-    font-size: 1rem;
-    text-align: center;
+    font-size: 0.95rem;
+    text-align: left;
 }
 
-.custom-input-group input:focus {
+.custom-input-group input.custom-text-input:focus {
     outline: none;
     border-color: var(--primary-color);
+}
+
+.custom-input-actions .btn-secondary.btn-compact {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    margin: 0;
+}
+
+/* 隱藏原生檔案選擇器（避免被 .file-input 蓋過） */
+.custom-input-actions input.custom-file-input,
+.custom-input-actions input#customTxtFile {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+}
+
+.custom-hint {
+    margin: 0.5rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.bulk-import-panel {
+    max-width: 560px;
+    width: 92%;
+    position: relative;
+}
+
+.bulk-import-panel .close-overlay-btn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.bulk-import-panel .close-overlay-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    transform: rotate(90deg);
+}
+
+.bulk-import-hint {
+    margin: 0 0 1rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.bulk-import-textarea {
+    width: 100%;
+    min-height: 220px;
+    resize: vertical;
+    font-family: 'Courier New', monospace;
+    line-height: 1.5;
+}
+
+.id-item:has(.remove-custom-btn) {
+    position: relative;
+    padding-right: 2rem;
+}
+
+.remove-custom-btn {
+    position: absolute;
+    top: 50%;
+    right: 0.35rem;
+    transform: translateY(-50%);
+    width: 1.5rem;
+    height: 1.5rem;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1;
+    opacity: 0.4;
+    transition: opacity 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.id-item:hover .remove-custom-btn {
+    opacity: 1;
+}
+
+.remove-custom-btn:hover {
+    background: rgba(220, 53, 69, 0.25);
+    color: #ff6b7a;
 }
 
 /* 遮罩和開獎結果 */

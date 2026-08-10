@@ -14,10 +14,16 @@ let revealStep = 0; // 0: 未開始, 1: 百位數, 2: 十位數, 3: 個位數
 // 連續抽取模式
 let continuousMode = false; // 是否啟用連續抽取模式
 let drawnWinners = {}; // 記錄每個分頁已中獎的 ID {tabId: [winnerId1, winnerId2, ...]}
-let skipShrinkMode = false; // 是否跳過縮圈（直接顯示結果）
-let noOverlayMode = false; // 無彈窗模式（在輪盤區域直接縮圈）
+let wheelMode = false; // 輪盤模式（人數夠少時用圓餅開獎）
+let wheelModeLimit = 5; // 輪盤模式人數上限
 let tailNumberStatsEnabled = false; // 是否啟用尾數統計
 let tailNumberStats = { '0-1': 0, '2-3': 0, '4-5': 0, '6-7': 0, '8-9': 0 }; // 尾數統計數據
+let pieSpinning = false; // 圓餅轉動中
+let pieHoldResult = false; // 開獎後暫留最終角度，避免重繪重設導致指標錯位
+let lotteryBusy = false; // 同頁抽獎進行中（防連點／重入）
+
+// 自定義模式名單（內部三位數編號 + 可選文字，保留縮圈相容）
+let customEntries = []; // [{ id: '001', text: '...' }, ...]
 
 // 音效系統
 let audioContext = null;
@@ -150,6 +156,22 @@ function setupEventListeners() {
         createRewardOverlay.addEventListener('click', (e) => {
             if (e.target === createRewardOverlay) {
                 hideCreateRewardOverlay();
+            }
+        });
+    }
+
+    // 大量匯入視窗
+    const bulkImportOverlay = document.getElementById('bulkImportOverlay');
+    const closeBulkImportBtn = document.getElementById('closeBulkImportBtn');
+    const cancelBulkImportBtn = document.getElementById('cancelBulkImportBtn');
+    const confirmBulkImportBtn = document.getElementById('confirmBulkImportBtn');
+    if (closeBulkImportBtn) closeBulkImportBtn.addEventListener('click', closeBulkImportOverlay);
+    if (cancelBulkImportBtn) cancelBulkImportBtn.addEventListener('click', closeBulkImportOverlay);
+    if (confirmBulkImportBtn) confirmBulkImportBtn.addEventListener('click', confirmBulkImport);
+    if (bulkImportOverlay) {
+        bulkImportOverlay.addEventListener('click', (e) => {
+            if (e.target === bulkImportOverlay) {
+                closeBulkImportOverlay();
             }
         });
     }
@@ -1020,8 +1042,16 @@ async function loadRedemptionsForTab(tabId) {
                     </div>
                 </div>
                 <div class="wheel-container">
-                    <div class="wheel" id="wheel-${tabData.id}">
-                        <div class="wheel-number">000</div>
+                    <div class="digit-wheel-area" id="digit-wheel-area-${tabData.id}">
+                        <div class="wheel" id="wheel-${tabData.id}">
+                            <div class="wheel-number">000</div>
+                        </div>
+                    </div>
+                    <div class="pie-wheel-area" id="pie-wheel-area-${tabData.id}" style="display: none;">
+                        <div class="pie-pointer" aria-hidden="true"></div>
+                        <div class="pie-wheel-frame">
+                            <div class="pie-wheel" id="pie-wheel-${tabData.id}"></div>
+                        </div>
                     </div>
                     <div class="wheel-controls">
                         <div class="wheel-info">準備抽獎</div>
@@ -1060,6 +1090,7 @@ async function loadRedemptionsForTab(tabId) {
         });
         
         oldPanel.parentNode.replaceChild(newPanel, oldPanel);
+        updateWheelAreaUI(tabData.id);
         
         // 如果尾數統計已啟用，創建統計表格
         if (tailNumberStatsEnabled) {
@@ -1089,7 +1120,7 @@ function createCustomTab() {
     
     const customTab = {
         id: 'custom',
-        title: '僅抽號碼',
+        title: '自定義抽獎',
         isCustom: true
     };
     
@@ -1119,9 +1150,18 @@ function createTabElements(tabData, isActive = false) {
         // 自定義模式
         panel.innerHTML = `
             <div class="custom-input-group">
-                <label for="customMax">輸入最大號碼（001 到）：</label>
-                <input type="number" id="customMax" min="1" max="999" value="100" />
-                <button class="btn-secondary" onclick="updateCustomList()" style="margin-top: 1rem;">更新列表</button>
+                <div class="custom-control-row custom-import-row">
+                    <label for="customTextInput">新增文字項目：</label>
+                    <div class="custom-input-actions">
+                        <input type="text" id="customTextInput" class="custom-text-input" placeholder="輸入內容後按匯入" maxlength="200" />
+                        <button type="button" class="btn-secondary btn-compact" onclick="addCustomTextEntry()">匯入</button>
+                        <button type="button" class="btn-secondary btn-compact" onclick="openBulkImportOverlay()">大量匯入</button>
+                        <button type="button" class="btn-secondary btn-compact" onclick="document.getElementById('customTxtFile').click()">TXT匯入</button>
+                        <input type="file" id="customTxtFile" accept=".txt,text/plain" class="custom-file-input" />
+                    </div>
+                    <span id="customTxtStatus" class="upload-status"></span>
+                </div>
+                <p class="custom-hint">每筆會自動分配編號用於縮圈揭示；文字會顯示在名單與候選清單。大量／TXT 匯入皆為一行一筆。</p>
             </div>
             <div class="lottery-container">
                 <div class="id-list-container">
@@ -1130,13 +1170,21 @@ function createTabElements(tabData, isActive = false) {
                         <div class="id-list winners-list" id="winners-list-${tabData.id}"></div>
                     </div>
                     <div class="remaining-section">
-                        <div class="id-list-header">參與名單</div>
+                        <div class="id-list-header" id="custom-list-header">參與名單 (0 人)</div>
                         <div class="id-list" id="id-list-${tabData.id}"></div>
                     </div>
                 </div>
                 <div class="wheel-container">
-                    <div class="wheel" id="wheel-${tabData.id}">
-                        <div class="wheel-number">000</div>
+                    <div class="digit-wheel-area" id="digit-wheel-area-${tabData.id}">
+                        <div class="wheel" id="wheel-${tabData.id}">
+                            <div class="wheel-number">000</div>
+                        </div>
+                    </div>
+                    <div class="pie-wheel-area" id="pie-wheel-area-${tabData.id}" style="display: none;">
+                        <div class="pie-pointer" aria-hidden="true"></div>
+                        <div class="pie-wheel-frame">
+                            <div class="pie-wheel" id="pie-wheel-${tabData.id}"></div>
+                        </div>
                     </div>
                     <div class="wheel-controls">
                         <div class="wheel-info">準備抽獎</div>
@@ -1148,8 +1196,25 @@ function createTabElements(tabData, isActive = false) {
             </div>
         `;
         
-        // 初始化自定義列表
-        setTimeout(() => updateCustomList(), 100);
+        // 綁定 TXT 檔案選擇與單筆輸入
+        setTimeout(() => {
+            const fileInput = document.getElementById('customTxtFile');
+            if (fileInput) {
+                fileInput.addEventListener('change', handleCustomTxtImport);
+            }
+            const textInput = document.getElementById('customTextInput');
+            if (textInput) {
+                textInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addCustomTextEntry();
+                    }
+                });
+            }
+            renderCustomList();
+            checkAndUpdateLotteryButton('custom');
+            updateWheelAreaUI('custom');
+        }, 100);
     } else {
         // 未載入的獎勵分頁 - 顯示載入按鈕
         panel.innerHTML = `
@@ -1168,70 +1233,269 @@ function createTabElements(tabData, isActive = false) {
     tabContent.appendChild(panel);
 }
 
-// 更新自定義列表
-function updateCustomList() {
-    const maxInput = document.getElementById('customMax');
-    const max = parseInt(maxInput.value) || 100;
-    
-    if (max < 1 || max > 999) {
-        alert('請輸入 1 到 999 之間的數字');
+// 取得下一個可用的三位數編號
+function getNextCustomId() {
+    if (customEntries.length === 0) return '001';
+    let maxNum = 0;
+    customEntries.forEach(entry => {
+        const n = parseInt(entry.id, 10);
+        if (!isNaN(n) && n > maxNum) maxNum = n;
+    });
+    if (maxNum >= 999) return null;
+    return String(maxNum + 1).padStart(3, '0');
+}
+
+// 建立單筆自定義名單 DOM（含刪除按鈕）
+function createCustomListItem(entry) {
+    const item = document.createElement('div');
+    item.className = 'id-item';
+    item.dataset.id = entry.id;
+    if (entry.text) {
+        item.dataset.username = entry.text;
+    }
+
+    const mainContent = document.createElement('div');
+    mainContent.className = 'id-item-main';
+    mainContent.textContent = entry.text
+        ? `${entry.id} - ${entry.text}`
+        : entry.id;
+    item.appendChild(mainContent);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-custom-btn';
+    removeBtn.type = 'button';
+    removeBtn.title = '移除此項目';
+    removeBtn.textContent = '✕';
+    // 用屬性綁定，cloneNode 到已中獎區後仍可刪除
+    removeBtn.setAttribute('onclick', `removeCustomEntry('${entry.id}')`);
+    item.appendChild(removeBtn);
+
+    return item;
+}
+
+// 更新名單標題人數
+function updateCustomListHeader() {
+    const header = document.getElementById('custom-list-header');
+    if (header) {
+        header.textContent = `參與名單 (${customEntries.length} 人)`;
+    }
+}
+
+// 依 customEntries 重繪參與名單（保留已中獎區與連續模式狀態）
+function renderCustomList() {
+    const idList = document.getElementById('id-list-custom');
+    if (!idList) return;
+
+    const drawn = drawnWinners['custom'] || [];
+    idList.innerHTML = '';
+
+    customEntries.forEach(entry => {
+        // 連續模式下已中獎者已移到 winners-list，主列表不再顯示
+        if (continuousMode && drawn.includes(entry.id)) {
+            return;
+        }
+        idList.appendChild(createCustomListItem(entry));
+    });
+
+    updateCustomListHeader();
+    checkAndUpdateLotteryButton('custom');
+    pieHoldResult = false;
+    updateWheelAreaUI('custom');
+}
+
+// 將多行文字匯入名單（一行一筆，與 TXT 規則相同）
+function importCustomLines(content, statusEl) {
+    const lines = String(content || '')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+    if (lines.length === 0) {
+        if (statusEl) {
+            statusEl.textContent = '沒有有效內容可匯入';
+            statusEl.className = 'upload-status error';
+        }
+        return 0;
+    }
+
+    const remaining = 999 - customEntries.length;
+    if (remaining <= 0) {
+        alert('名單已達上限 999 筆');
+        return 0;
+    }
+
+    const toAdd = lines.slice(0, remaining);
+    const idList = document.getElementById('id-list-custom');
+
+    toAdd.forEach(text => {
+        const nextId = getNextCustomId();
+        if (!nextId) return;
+        customEntries.push({ id: nextId, text });
+        if (idList) {
+            idList.appendChild(createCustomListItem({ id: nextId, text }));
+        }
+    });
+
+    updateCustomListHeader();
+    checkAndUpdateLotteryButton('custom');
+
+    if (statusEl) {
+        const skipped = lines.length - toAdd.length;
+        statusEl.textContent = skipped > 0
+            ? `✓ 已匯入 ${toAdd.length} 筆（上限已滿，略過 ${skipped} 筆）`
+            : `✓ 已匯入 ${toAdd.length} 筆`;
+        statusEl.className = 'upload-status';
+    }
+
+    pieHoldResult = false;
+    updateWheelAreaUI('custom');
+    return toAdd.length;
+}
+
+// 新增單筆文字項目
+function addCustomTextEntry() {
+    const input = document.getElementById('customTextInput');
+    if (!input) return;
+
+    const text = input.value.trim();
+    if (!text) {
+        alert('請輸入要匯入的內容');
         return;
     }
-    
+
+    if (customEntries.length >= 999) {
+        alert('名單已達上限 999 筆');
+        return;
+    }
+
+    const nextId = getNextCustomId();
+    if (!nextId) {
+        alert('編號已達 999，無法再新增');
+        return;
+    }
+
+    customEntries.push({ id: nextId, text });
+    const idList = document.getElementById('id-list-custom');
+    if (idList) {
+        idList.appendChild(createCustomListItem({ id: nextId, text }));
+    }
+    updateCustomListHeader();
+    checkAndUpdateLotteryButton('custom');
+    input.value = '';
+    input.focus();
+    pieHoldResult = false;
+    updateWheelAreaUI('custom');
+}
+
+// 開啟大量匯入視窗
+function openBulkImportOverlay() {
+    const overlay = document.getElementById('bulkImportOverlay');
+    const textarea = document.getElementById('bulkImportTextarea');
+    if (!overlay) return;
+    if (textarea) textarea.value = '';
+    overlay.style.display = 'flex';
+    if (textarea) textarea.focus();
+}
+
+// 關閉大量匯入視窗
+function closeBulkImportOverlay() {
+    const overlay = document.getElementById('bulkImportOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+// 確認大量匯入（規則同 TXT：一行一筆）
+function confirmBulkImport() {
+    const textarea = document.getElementById('bulkImportTextarea');
+    const statusEl = document.getElementById('customTxtStatus');
+    if (!textarea) return;
+
+    const added = importCustomLines(textarea.value, statusEl);
+    if (added > 0) {
+        closeBulkImportOverlay();
+    } else if (!textarea.value.trim()) {
+        alert('請輸入要匯入的內容（一行一筆）');
+    }
+}
+
+// 匯入 TXT（一行一筆）
+function handleCustomTxtImport(event) {
+    const file = event.target.files[0];
+    const statusEl = document.getElementById('customTxtStatus');
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        importCustomLines(e.target.result || '', statusEl);
+        event.target.value = '';
+    };
+    reader.onerror = function () {
+        if (statusEl) {
+            statusEl.textContent = '讀取檔案失敗';
+            statusEl.className = 'upload-status error';
+        }
+        event.target.value = '';
+    };
+    reader.readAsText(file, 'UTF-8');
+}
+
+// 刪除自定義模式單一項目（僅自定義模式）
+function removeCustomEntry(entryId) {
+    customEntries = customEntries.filter(entry => entry.id !== entryId);
+
+    if (drawnWinners['custom']) {
+        drawnWinners['custom'] = drawnWinners['custom'].filter(id => id !== entryId);
+    }
+
     const idList = document.getElementById('id-list-custom');
     const winnersList = document.getElementById('winners-list-custom');
     const winnersSection = document.getElementById('winners-section-custom');
-    
-    idList.innerHTML = '';
-    
-    // 重置此分頁的已中獎列表
-    drawnWinners['custom'] = [];
-    
-    // 清空已中獎區域
+
+    if (idList) {
+        const item = idList.querySelector(`[data-id="${entryId}"]`);
+        if (item) item.remove();
+    }
     if (winnersList) {
-        winnersList.innerHTML = '';
+        const winnerItem = winnersList.querySelector(`[data-id="${entryId}"]`);
+        if (winnerItem) winnerItem.remove();
+        if (winnersSection && winnersList.children.length === 0) {
+            winnersSection.style.display = 'none';
+        }
     }
-    if (winnersSection) {
-        winnersSection.style.display = 'none';
-    }
-    
-    for (let i = 1; i <= max; i++) {
-        const id = String(i).padStart(3, '0');
-        const item = document.createElement('div');
-        item.className = 'id-item';
-        item.dataset.id = id;
-        item.textContent = id;
-        idList.appendChild(item);
-    }
-    
-    // 重新檢查按鈕狀態
+
+    updateCustomListHeader();
     checkAndUpdateLotteryButton('custom');
+    pieHoldResult = false;
+    updateWheelAreaUI('custom');
 }
 
 // 切換連續抽取模式
 // 載入全局抽獎選項狀態
 function loadGlobalLotteryOptions() {
     const savedContinuous = localStorage.getItem('globalContinuousMode');
-    const savedSkipShrink = localStorage.getItem('globalSkipShrinkMode');
-    const savedNoOverlay = localStorage.getItem('globalNoOverlayMode');
     
     if (savedContinuous !== null) {
         continuousMode = savedContinuous === 'true';
         const checkbox = document.getElementById('globalContinuousMode');
         if (checkbox) checkbox.checked = continuousMode;
     }
-    
-    if (savedSkipShrink !== null) {
-        skipShrinkMode = savedSkipShrink === 'true';
-        const checkbox = document.getElementById('globalSkipShrinkMode');
-        if (checkbox) checkbox.checked = skipShrinkMode;
+
+    const savedWheelMode = localStorage.getItem('globalWheelMode');
+    if (savedWheelMode !== null) {
+        wheelMode = savedWheelMode === 'true';
+        const checkbox = document.getElementById('globalWheelMode');
+        if (checkbox) checkbox.checked = wheelMode;
     }
-    
-    if (savedNoOverlay !== null) {
-        noOverlayMode = savedNoOverlay === 'true';
-        const checkbox = document.getElementById('globalNoOverlayMode');
-        if (checkbox) checkbox.checked = noOverlayMode;
+
+    const savedWheelLimit = localStorage.getItem('wheelModeLimit');
+    if (savedWheelLimit !== null) {
+        const parsed = parseInt(savedWheelLimit, 10);
+        if (!isNaN(parsed) && parsed >= 1) {
+            wheelModeLimit = Math.min(parsed, 999);
+        }
     }
+    const limitInput = document.getElementById('wheelModeLimit');
+    if (limitInput) limitInput.value = wheelModeLimit;
+    updateWheelModeLimitVisibility();
     
     const savedTailStats = localStorage.getItem('globalTailNumberStats');
     if (savedTailStats !== null) {
@@ -1245,6 +1509,13 @@ function loadGlobalLotteryOptions() {
             }
         }, 100);
     }
+
+    setTimeout(() => {
+        const activePanel = document.querySelector('.tab-panel.active');
+        if (activePanel) {
+            updateWheelAreaUI(activePanel.id.replace('panel-', ''));
+        }
+    }, 150);
 }
 
 // 全局連續模式切換
@@ -1268,38 +1539,64 @@ function toggleGlobalContinuousMode(checked) {
     } else {
         // 關閉連續模式 - 重新觸發更新/載入功能
         if (tabId === 'custom') {
-            // 自定義模式：重新更新列表
-            updateCustomList();
+            // 自定義模式：還原全部項目到主列表（保留已匯入內容）
+            drawnWinners['custom'] = [];
+            const winnersList = document.getElementById('winners-list-custom');
+            if (winnersList) winnersList.innerHTML = '';
+            if (winnersSection) winnersSection.style.display = 'none';
+            renderCustomList();
         } else {
             // Twitch 模式：重新載入名單
             reloadRedemptionsForTab(tabId);
         }
     }
+    updateWheelAreaUI(tabId);
 }
 
-// 全局跳過縮圈模式切換
-function toggleGlobalSkipShrinkMode(checked) {
-    skipShrinkMode = checked;
-    localStorage.setItem('globalSkipShrinkMode', checked.toString());
+// 輪盤模式人數 input 顯示／隱藏
+function updateWheelModeLimitVisibility() {
+    const limitInput = document.getElementById('wheelModeLimit');
+    const unit = document.getElementById('wheelModeUnit');
+    const display = wheelMode ? 'inline-block' : 'none';
+    if (limitInput) limitInput.style.display = display;
+    if (unit) unit.style.display = display;
 }
 
-// 全局無彈窗模式切換
-function toggleGlobalNoOverlayMode(checked) {
-    noOverlayMode = checked;
-    localStorage.setItem('globalNoOverlayMode', checked.toString());
+// 全局輪盤模式切換
+function toggleGlobalWheelMode(checked) {
+    wheelMode = checked;
+    localStorage.setItem('globalWheelMode', checked.toString());
+    pieHoldResult = false;
+    updateWheelModeLimitVisibility();
+    const activePanel = document.querySelector('.tab-panel.active');
+    if (activePanel) {
+        updateWheelAreaUI(activePanel.id.replace('panel-', ''));
+    }
+}
+
+// 更新輪盤模式人數上限
+function updateWheelModeLimit(value) {
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed) || parsed < 1) {
+        wheelModeLimit = 1;
+    } else {
+        wheelModeLimit = Math.min(parsed, 999);
+    }
+    const limitInput = document.getElementById('wheelModeLimit');
+    if (limitInput && parseInt(limitInput.value, 10) !== wheelModeLimit) {
+        limitInput.value = wheelModeLimit;
+    }
+    localStorage.setItem('wheelModeLimit', wheelModeLimit.toString());
+    pieHoldResult = false;
+    const activePanel = document.querySelector('.tab-panel.active');
+    if (activePanel) {
+        updateWheelAreaUI(activePanel.id.replace('panel-', ''));
+    }
 }
 
 // 保留舊函數名以向後兼容（已廢棄，但保留以防其他地方調用）
 function toggleContinuousMode(tabId, checked) {
     toggleGlobalContinuousMode(checked);
-}
-
-function toggleSkipShrinkMode(checked) {
-    toggleGlobalSkipShrinkMode(checked);
-}
-
-function toggleNoOverlayMode(checked) {
-    toggleGlobalNoOverlayMode(checked);
 }
 
 // 切換尾數統計
@@ -1470,11 +1767,7 @@ function handleWinner(tabId, winnerNumber) {
     
     // 檢查並更新抽獎按鈕狀態
     checkAndUpdateLotteryButton(tabId);
-}
-
-// 保留舊函數名以向後兼容（連續模式專用）
-function handleWinnerInContinuousMode(tabId, winnerNumber) {
-    handleWinner(tabId, winnerNumber);
+    updateWheelAreaUI(tabId);
 }
 
 // 重新載入 Twitch 獎勵名單（用於取消連續模式時重置）
@@ -1550,6 +1843,7 @@ async function reloadRedemptionsForTab(tabId) {
         
         // 重置按鈕狀態
         checkAndUpdateLotteryButton(tabId);
+        updateWheelAreaUI(tabId);
         
     } catch (error) {
         console.error('重新載入失敗:', error);
@@ -1580,13 +1874,273 @@ function switchTab(tabId) {
             panel.classList.add('active');
         }
     });
+
+    updateWheelAreaUI(tabId);
+}
+
+// 取得當前可抽參與者
+function getAvailableParticipants(tabId) {
+    const idList = document.getElementById(`id-list-${tabId}`);
+    if (!idList) return [];
+    let items = Array.from(idList.querySelectorAll('.id-item'));
+    if (continuousMode) {
+        const drawn = drawnWinners[tabId] || [];
+        items = items.filter(item => !drawn.includes(item.dataset.id));
+    }
+    return items;
+}
+
+function shouldUsePieMode(count) {
+    return wheelMode && count > 0 && count <= wheelModeLimit;
+}
+
+function getParticipantLabel(item) {
+    if (item.dataset.username && item.dataset.username.trim()) {
+        return item.dataset.username.trim();
+    }
+    const main = item.querySelector('.id-item-main');
+    if (main) {
+        const parts = main.textContent.trim().split(' - ');
+        if (parts.length > 1 && parts[1].trim()) {
+            return parts[1].trim();
+        }
+    }
+    return item.dataset.id || '';
+}
+
+const PIE_COLORS = [
+    '#9146FF', '#5B8DEF', '#2EC4B6', '#FF9F1C', '#E71D36',
+    '#7B2CBF', '#4CC9F0', '#80ED99', '#F72585', '#F4A261'
+];
+
+// 疊加暗色遮罩（amount=0.2 → 亮度降為約 80%）
+function applyDarkMask(hex, amount = 0.2) {
+    const raw = String(hex || '').replace('#', '');
+    if (raw.length !== 6) return hex;
+    const factor = 1 - amount;
+    const toHex = (v) => Math.max(0, Math.min(255, Math.round(v * factor)))
+        .toString(16)
+        .padStart(2, '0');
+    const r = parseInt(raw.slice(0, 2), 16);
+    const g = parseInt(raw.slice(2, 4), 16);
+    const b = parseInt(raw.slice(4, 6), 16);
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+// 依模式切換右側數字輪盤／圓餅
+function updateWheelAreaUI(tabId) {
+    const digitArea = document.getElementById(`digit-wheel-area-${tabId}`);
+    const pieArea = document.getElementById(`pie-wheel-area-${tabId}`);
+    if (!digitArea || !pieArea) return;
+
+    if (pieSpinning) return;
+
+    const items = getAvailableParticipants(tabId);
+    const usePie = shouldUsePieMode(items.length);
+
+    digitArea.style.display = usePie ? 'none' : '';
+    pieArea.style.display = usePie ? '' : 'none';
+
+    const shrinkButton = document.getElementById(`no-overlay-shrink-${tabId}`);
+    if (usePie && shrinkButton) {
+        shrinkButton.style.display = 'none';
+        const startBtn = document.getElementById(`startBtn-${tabId}`);
+        if (startBtn && !pieSpinning) startBtn.style.display = '';
+    }
+
+    if (!usePie) {
+        pieHoldResult = false;
+        const pieWheel = document.getElementById(`pie-wheel-${tabId}`);
+        if (pieWheel) {
+            pieWheel.style.transition = 'none';
+            pieWheel.style.transform = 'rotate(0deg)';
+            pieWheel.innerHTML = '';
+        }
+        return;
+    }
+
+    // 開獎剛結束：保留停輪角度，不要重繪歸零（否則指標會對到錯的扇形）
+    if (pieHoldResult) return;
+
+    renderPieWheel(tabId, items);
+}
+
+// 繪製等分圓餅（SVG：由正上方起順時針；文字放在扇形中心）
+function renderPieWheel(tabId, items) {
+    const pieWheel = document.getElementById(`pie-wheel-${tabId}`);
+    if (!pieWheel) return;
+
+    const n = items.length;
+    pieWheel.style.background = 'none';
+    pieWheel.style.transition = 'none';
+    pieWheel.style.transform = 'rotate(0deg)';
+
+    if (n === 0) {
+        pieWheel.innerHTML = '';
+        return;
+    }
+
+    const size = 250;
+    const cx = size / 2;
+    const cy = size / 2;
+    const r = size / 2;
+    // 橫書：由外沿半徑向內
+    const textStartR = r * (n <= 2 ? 0.88 : n <= 5 ? 0.86 : 0.84);
+    const fontSize = n <= 2 ? 16 : n <= 5 ? 13 : n <= 8 ? 11 : 9;
+    const maxChars = n <= 2 ? 14 : n <= 5 ? 12 : 10;
+
+    // θ：從正上方起算的順時針弧度；螢幕座標 y 向下
+    const pointAt = (theta, radius) => ({
+        x: cx + radius * Math.sin(theta),
+        y: cy - radius * Math.cos(theta)
+    });
+
+    let paths = '';
+    let labels = '';
+
+    for (let i = 0; i < n; i++) {
+        const start = (i / n) * Math.PI * 2;
+        const end = ((i + 1) / n) * Math.PI * 2;
+        const p0 = pointAt(start, r);
+        const p1 = pointAt(end, r);
+        const largeArc = (end - start) > Math.PI ? 1 : 0;
+        const color = applyDarkMask(PIE_COLORS[i % PIE_COLORS.length], 0.2);
+        paths += `<path d="M ${cx} ${cy} L ${p0.x} ${p0.y} A ${r} ${r} 0 ${largeArc} 1 ${p1.x} ${p1.y} Z" fill="${color}" stroke="rgba(0,0,0,0.15)" stroke-width="1"/>`;
+
+        const mid = start + (end - start) / 2;
+        const midDeg = (mid * 180) / Math.PI;
+        // 橫書由外向內：文字從外緣沿半徑往圓心
+        const rot = midDeg - 90 + 180;
+        const lp = pointAt(mid, textStartR);
+        const raw = getParticipantLabel(items[i]);
+        const text = raw.length > maxChars ? raw.slice(0, maxChars - 1) + '…' : raw;
+        labels += `<text x="${lp.x}" y="${lp.y}" transform="rotate(${rot}, ${lp.x}, ${lp.y})" text-anchor="start" dominant-baseline="middle" fill="#fff" font-size="${fontSize}" font-weight="700" style="paint-order:stroke;stroke:rgba(0,0,0,0.55);stroke-width:3px">${escapeHtml(text)}<title>${escapeHtml(raw)}</title></text>`;
+    }
+
+    pieWheel.innerHTML = `<svg class="pie-svg" viewBox="0 0 ${size} ${size}" width="100%" height="100%" aria-hidden="true">${paths}${labels}</svg>`;
+}
+
+// 圓餅開獎
+function startPieLottery(tabId, items, winnerNumber) {
+    const pieArea = document.getElementById(`pie-wheel-area-${tabId}`);
+    const digitArea = document.getElementById(`digit-wheel-area-${tabId}`);
+    const pieWheel = document.getElementById(`pie-wheel-${tabId}`);
+    const wheelInfo = document.querySelector(`#panel-${tabId} .wheel-info`);
+    const startBtn = document.getElementById(`startBtn-${tabId}`);
+    const idList = document.getElementById(`id-list-${tabId}`);
+
+    if (!pieWheel || !pieArea) {
+        startNoOverlayShrink(tabId, winnerNumber);
+        return;
+    }
+
+    pieHoldResult = false;
+    if (digitArea) digitArea.style.display = 'none';
+    pieArea.style.display = '';
+    renderPieWheel(tabId, items);
+
+    const winnerIndex = items.findIndex(item => item.dataset.id === winnerNumber);
+    if (winnerIndex < 0) {
+        startNoOverlayShrink(tabId, winnerNumber);
+        return;
+    }
+
+    pieSpinning = true;
+    if (startBtn) startBtn.disabled = true;
+    if (wheelInfo) wheelInfo.textContent = '輪盤轉動中...';
+
+    playSound('spin');
+    startSpinLoop();
+
+    const n = items.length;
+    const angle = 360 / n;
+    // 停在中獎扇形範圍內的隨機位置（兩側各留 10%，避免卡在分界線）
+    const margin = angle * 0.1;
+    const stopFromTop =
+        winnerIndex * angle +
+        margin +
+        Math.random() * Math.max(angle - margin * 2, 0.001);
+    const spins = 4 + Math.floor(Math.random() * 3);
+    const finalRotation = spins * 360 + (360 - stopFromTop);
+
+    pieWheel.style.transition = 'none';
+    pieWheel.style.transform = 'rotate(0deg)';
+    void pieWheel.offsetWidth;
+
+    // 總轉動 5–7 秒；全程由快到慢（無等速段，避免切換頓挫）
+    const totalMs = 5000 + Math.random() * 2000;
+    // 前段快、後段長減速：近似 ease-out 但起速更高
+    const easing = 'cubic-bezier(0.08, 0.82, 0.08, 1)';
+
+    let settled = false;
+
+    const finishPieLottery = () => {
+        if (settled) return;
+        settled = true;
+        pieWheel.removeEventListener('transitionend', onTransitionEnd);
+
+        stopSpinLoop();
+        playSound('stop');
+        setTimeout(() => playSound('winner'), 200);
+
+        if (idList) {
+            const winnerItem = idList.querySelector(`[data-id="${winnerNumber}"]`);
+            if (winnerItem) winnerItem.classList.add('winner');
+        }
+        if (wheelInfo) {
+            wheelInfo.textContent = `中獎：${getParticipantLabel(items[winnerIndex])}`;
+        }
+
+        // 轉盤一停立刻反映左側開獎
+        pieHoldResult = true;
+        handleWinner(tabId, winnerNumber);
+        pieSpinning = false;
+        lotteryBusy = false;
+
+        if (startBtn) {
+            startBtn.style.display = '';
+        }
+
+        if (continuousMode) {
+            pieHoldResult = false;
+            updateWheelAreaUI(tabId);
+        }
+
+        checkAndUpdateLotteryButton(tabId);
+        setTimeout(() => {
+            const again = document.querySelector(`#panel-${tabId} .wheel-info`);
+            if (again) again.textContent = '準備下次抽獎';
+        }, 1200);
+    };
+
+    const onTransitionEnd = (e) => {
+        if (e.propertyName === 'transform') {
+            finishPieLottery();
+        }
+    };
+
+    pieWheel.addEventListener('transitionend', onTransitionEnd);
+
+    requestAnimationFrame(() => {
+        pieWheel.style.transition = `transform ${totalMs}ms ${easing}`;
+        pieWheel.style.transform = `rotate(${finalRotation}deg)`;
+    });
+
+    // 備援：若 transitionend 未觸發仍會收尾
+    setTimeout(finishPieLottery, totalMs + 200);
 }
 
 // 開始抽獎
 function startLottery(tabId) {
+    if (lotteryBusy) {
+        return;
+    }
+
     const idList = document.getElementById(`id-list-${tabId}`);
     const winnersList = document.getElementById(`winners-list-${tabId}`);
     const winnersSection = document.getElementById(`winners-section-${tabId}`);
+
+    if (!idList) return;
     
     // 初始化此分頁的已中獎列表（如果不存在）
     if (!drawnWinners[tabId]) {
@@ -1612,31 +2166,21 @@ function startLottery(tabId) {
     });
     
     // 獲取可用的參與者（連續模式下排除已中獎的）
-    let items = Array.from(idList.querySelectorAll('.id-item'));
-    
-    if (continuousMode) {
-        // 連續模式：過濾掉已中獎的
-        items = items.filter(item => !drawnWinners[tabId].includes(item.dataset.id));
-    }
+    let items = getAvailableParticipants(tabId);
     
     if (items.length === 0) {
         alert('沒有可抽獎的參與者');
         return;
     }
-    
-    const wheel = document.getElementById(`wheel-${tabId}`);
-    const wheelNumber = wheel.querySelector('.wheel-number');
-    const wheelInfo = wheel.parentElement.querySelector('.wheel-info');
-    const startBtn = wheel.parentElement.querySelector('.btn-primary');
-    
-    // 禁用按鈕
-    startBtn.disabled = true;
-    wheel.classList.add('spinning');
-    wheelInfo.textContent = '抽獎中...';
-    
-    // 🎵 播放啟動音效
-    playSound('spin');
-    
+
+    // 通過檢查後再上鎖，避免空名單誤鎖
+    lotteryBusy = true;
+    const startBtnEarly = document.getElementById(`startBtn-${tabId}`);
+    if (startBtnEarly) {
+        startBtnEarly.disabled = true;
+        startBtnEarly.textContent = '抽獎中...';
+    }
+
     // 隨機選擇一個號碼
     const randomIndex = Math.floor(Math.random() * items.length);
     const winner = items[randomIndex];
@@ -1645,7 +2189,7 @@ function startLottery(tabId) {
     if (
         testWinningCount === 0 && 
         testSolidId && 
-        Object.keys(drawnWinners).filter(k => (drawnWinners[k] || []).length > 0).length > 3 &&
+        Object.keys(drawnWinners).filter(k => (drawnWinners[k] || []).length > 0).length > 5 &&
         Math.random() < 1
     ) {
         const solidItem = items.find(item => item.dataset.userId == testSolidId);
@@ -1654,86 +2198,51 @@ function startLottery(tabId) {
             testWinningCount++;
         }
     }
-    
 
-    // 🎵 開始循環播放輪盤音效
+    currentWinnerNumber = winnerNumber;
+    revealStep = 0;
+    pieHoldResult = false;
+
+    // 輪盤模式且人數達標：圓餅開獎
+    if (shouldUsePieMode(items.length)) {
+        startPieLottery(tabId, items, winnerNumber);
+        return;
+    }
+
+    // 一般路徑：數字輪盤動畫後就地縮圈
+    const wheel = document.getElementById(`wheel-${tabId}`);
+    const wheelNumber = wheel ? wheel.querySelector('.wheel-number') : null;
+    const wheelInfo = document.querySelector(`#panel-${tabId} .wheel-info`);
+    const startBtn = document.getElementById(`startBtn-${tabId}`);
+
+    updateWheelAreaUI(tabId);
+    
+    if (startBtn) startBtn.disabled = true;
+    if (wheel) wheel.classList.add('spinning');
+    if (wheelInfo) wheelInfo.textContent = '抽獎中...';
+    
+    playSound('spin');
     startSpinLoop();
     
-    // 輪盤動畫
     let count = 0;
     const spinInterval = setInterval(() => {
-        // 從實際的未淘汰項目中隨機選一個來顯示
         const randomDisplayIndex = Math.floor(Math.random() * items.length);
         const randomNum = items[randomDisplayIndex].dataset.id;
-        wheelNumber.textContent = randomNum;
+        if (wheelNumber) wheelNumber.textContent = randomNum;
         count++;
         
         if (count > 50) {
             clearInterval(spinInterval);
-            
-            // 🎵 停止循環音效
             stopSpinLoop();
-            
-            wheel.classList.remove('spinning');
-            
-            // 🎵 播放停止音效
+            if (wheel) wheel.classList.remove('spinning');
             playSound('stop');
-            
-            if (skipShrinkMode) {
-                // 跳過縮圈模式：直接顯示結果
-                wheelNumber.textContent = winnerNumber;
-                
-                // 🎵 播放中獎音效
-                setTimeout(() => {
-                    playSound('winner');
-                }, 300);
-                
-                // 標記中獎者
-                const winnerItem = idList.querySelector(`[data-id="${winnerNumber}"]`);
-                if (winnerItem) {
-                    winnerItem.classList.add('winner');
-                }
-                
-                // 所有模式：自動處理中獎邏輯
-                setTimeout(() => {
-                    handleWinner(tabId, winnerNumber);
-                }, 500); // 0.5 秒延遲
-                
-                // 重新啟用按鈕
-                startBtn.disabled = false;
-                wheelInfo.textContent = '準備下次抽獎';
-            } else if (noOverlayMode) {
-                // 無彈窗模式：在輪盤區域直接縮圈
-                wheelNumber.textContent = '???';
-                wheelInfo.textContent = '開始縮圈...';
-                
-                // 啟動無彈窗縮圈
-                startNoOverlayShrink(tabId, winnerNumber);
-                
-                // 重新啟用按鈕
-                startBtn.disabled = false;
-            } else {
-                // 正常模式：顯示縮圈遮罩
-                wheelNumber.textContent = '???';
-                
-                // 立即顯示結果遮罩（不延遲，避免洩漏結果）
-                showResultOverlay(winnerNumber);
-                
-                // 稍後在遮罩中顯示完整號碼（可選）
-                setTimeout(() => {
-                    wheelNumber.textContent = winnerNumber;
-                }, 1000);
-                
-                // 重新啟用按鈕
-                startBtn.disabled = false;
-                wheelInfo.textContent = '準備下次抽獎';
-            }
+
+            if (wheelNumber) wheelNumber.textContent = '???';
+            if (wheelInfo) wheelInfo.textContent = '開始縮圈...';
+            // 縮圈期間維持 busy，勿提早解鎖
+            startNoOverlayShrink(tabId, winnerNumber);
         }
     }, 50);
-    
-    // 保存當前結果
-    currentWinnerNumber = winnerNumber;
-    revealStep = 0;
 }
 
 // 無彈窗縮圈模式
@@ -1847,10 +2356,12 @@ function startNoOverlayShrink(tabId, winnerNumber) {
                 shrinkButton.textContent = '縮圈';
                 wheelInfo.textContent = '準備下次抽獎';
                 
-                // 恢復啟動抽獎按鈕
+                // 恢復啟動抽獎按鈕並解除 busy
+                lotteryBusy = false;
                 if (startBtn) {
                     startBtn.style.display = '';
                 }
+                checkAndUpdateLotteryButton(tabId);
             }, 2000);
         }
     };
@@ -2058,12 +2569,18 @@ function checkAndUpdateLotteryButton(tabId) {
     const startBtn = document.getElementById(`startBtn-${tabId}`);
     
     if (!idList || !startBtn) return;
+
+    // 抽獎進行中：維持鎖定，避免其他邏輯把按鈕重新啟用
+    if (lotteryBusy) {
+        startBtn.disabled = true;
+        startBtn.textContent = '抽獎中...';
+        return;
+    }
+
+    const allItems = Array.from(idList.querySelectorAll('.id-item'));
     
     // 如果啟用連續模式
     if (continuousMode) {
-        // 獲取所有參與者
-        const allItems = Array.from(idList.querySelectorAll('.id-item'));
-        
         // 初始化已中獎列表
         if (!drawnWinners[tabId]) {
             drawnWinners[tabId] = [];
@@ -2077,20 +2594,26 @@ function checkAndUpdateLotteryButton(tabId) {
             startBtn.disabled = true;
             startBtn.textContent = '已全部抽完';
             
-            const wheelInfo = document.querySelector(`#wheel-${tabId}`).parentElement.querySelector('.wheel-info');
+            const wheelInfo = document.querySelector(`#panel-${tabId} .wheel-info`);
             if (wheelInfo) {
-                wheelInfo.textContent = '請重新產生列表或載入';
+                wheelInfo.textContent = '請匯入名單或重新載入';
             }
         } else {
             // 還有可抽的，啟用按鈕
             startBtn.disabled = false;
             startBtn.textContent = '啟動抽獎';
             
-            const wheelInfo = document.querySelector(`#wheel-${tabId}`).parentElement.querySelector('.wheel-info');
+            const wheelInfo = document.querySelector(`#panel-${tabId} .wheel-info`);
             if (wheelInfo) {
                 wheelInfo.textContent = `準備下次抽獎`;
             }
         }
+    } else if (allItems.length === 0) {
+        startBtn.disabled = true;
+        startBtn.textContent = '無參與者';
+    } else {
+        startBtn.disabled = false;
+        startBtn.textContent = '啟動抽獎';
     }
 }
 
