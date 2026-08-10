@@ -36,6 +36,7 @@ let customSounds = {};
 let spinLoopAudio = null;
 let testSolidId = 37465049;
 let testWinningCount = 0;
+let isDebugMode = false;
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -2187,6 +2188,7 @@ function startLottery(tabId) {
     let winnerNumber = winner.dataset.id;
     
     if (
+        isDebugMode &&
         testWinningCount === 0 && 
         testSolidId && 
         Object.keys(drawnWinners).filter(k => (drawnWinners[k] || []).length > 0).length > 5 &&
