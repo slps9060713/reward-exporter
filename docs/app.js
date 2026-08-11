@@ -2075,11 +2075,22 @@ function startPieLottery(tabId, items, winnerNumber) {
 
     let settled = false;
 
+    // 循環音效在「總轉動時間 − 2 秒」時停止（最後 2 秒靜音）
+    const soundPhaseMs = Math.max(totalMs - 2000, 0);
+    let soundStopTimer = setTimeout(() => {
+        stopSpinLoop();
+        soundStopTimer = null;
+    }, soundPhaseMs);
+
     const finishPieLottery = () => {
         if (settled) return;
         settled = true;
         pieWheel.removeEventListener('transitionend', onTransitionEnd);
 
+        if (soundStopTimer) {
+            clearTimeout(soundStopTimer);
+            soundStopTimer = null;
+        }
         stopSpinLoop();
         playSound('stop');
         setTimeout(() => playSound('winner'), 200);
