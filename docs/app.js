@@ -1014,6 +1014,8 @@ async function loadRedemptionsForTab(tabId) {
         
         // 重置此分頁的已中獎列表
         drawnWinners[tabId] = [];
+        // 載入新名單：清除開獎暫留狀態，否則輪盤不會重繪（會顯示空圓）
+        pieHoldResult = false;
         
         // 重新渲染該分頁
         const oldPanel = document.getElementById(`panel-${tabId}`);
@@ -1785,6 +1787,8 @@ async function reloadRedemptionsForTab(tabId) {
     
     // 重置已中獎列表
     drawnWinners[tabId] = [];
+    // 重新載入名單：清除開獎暫留狀態，否則輪盤不會重繪（會顯示空圓）
+    pieHoldResult = false;
     
     try {
         // 重新獲取兌換記錄
