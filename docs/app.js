@@ -2054,17 +2054,23 @@ function startPieLottery(tabId, items, winnerNumber) {
     if (startBtn) startBtn.disabled = true;
     if (wheelInfo) wheelInfo.textContent = '輪盤轉動中...';
 
-    playSound('spin');
-    startSpinLoop();
+    // 起手音：與減速滴答同音色、同參數的第 0 聲，讓觸發音與後續減速音連貫一致
+    // （自訂音效主題則沿用自訂起手音）
+    if (soundSettings.theme === 'custom' && customSounds.spin) {
+        playSound('spin');
+    } else {
+        generateTick(900, 26, 'triangle', 0.9);
+    }
 
     const n = items.length;
     const angle = 360 / n;
-    // 停在中獎扇形範圍內的隨機位置（兩側各留 10%，避免卡在分界線）
-    const margin = angle * 0.1;
-    const stopFromTop =
-        winnerIndex * angle +
-        margin +
-        Math.random() * Math.max(angle - margin * 2, 0.001);
+    // 落點偏向扇形兩側邊界（製造開獎懸念），但保留安全間距、不緊貼分界線
+    const edgeGapMin = angle * 0.12; // 距分界線至少 12%
+    const edgeGapMax = angle * 0.30; // 最多距分界線 30%
+    const offsetFromEdge = edgeGapMin + Math.random() * Math.max(edgeGapMax - edgeGapMin, 0.001);
+    const nearStartEdge = Math.random() < 0.5; // 隨機靠左邊界或右邊界
+    const withinSegment = nearStartEdge ? offsetFromEdge : (angle - offsetFromEdge);
+    const stopFromTop = winnerIndex * angle + withinSegment;
     const spins = 4 + Math.floor(Math.random() * 3);
     const finalRotation = spins * 360 + (360 - stopFromTop);
 
@@ -2079,23 +2085,17 @@ function startPieLottery(tabId, items, winnerNumber) {
 
     let settled = false;
 
-    // 循環音效在「總轉動時間 − 2 秒」時停止（最後 2 秒靜音）
-    const soundPhaseMs = Math.max(totalMs - 2000, 0);
-    let soundStopTimer = setTimeout(() => {
-        stopSpinLoop();
-        soundStopTimer = null;
-    }, soundPhaseMs);
+    // 開獎途中專用音效：跟隨轉盤減速的滴答（間隔漸長、音高音量漸弱），營造順暢收尾
+    // 於下方 requestAnimationFrame 啟動動畫時一併排程，確保與轉盤同步
+    let decelTimers = [];
 
     const finishPieLottery = () => {
         if (settled) return;
         settled = true;
         pieWheel.removeEventListener('transitionend', onTransitionEnd);
 
-        if (soundStopTimer) {
-            clearTimeout(soundStopTimer);
-            soundStopTimer = null;
-        }
-        stopSpinLoop();
+        stopWheelDecelSound(decelTimers);
+        decelTimers = [];
         playSound('stop');
         setTimeout(() => playSound('winner'), 200);
 
@@ -2140,6 +2140,8 @@ function startPieLottery(tabId, items, winnerNumber) {
     requestAnimationFrame(() => {
         pieWheel.style.transition = `transform ${totalMs}ms ${easing}`;
         pieWheel.style.transform = `rotate(${finalRotation}deg)`;
+        // 動畫啟動的同一刻排程減速音效，兩者同步
+        decelTimers = scheduleWheelDecelSound(totalMs, finalRotation);
     });
 
     // 備援：若 transitionend 未觸發仍會收尾
@@ -2760,6 +2762,87 @@ function generateBeep(frequency, duration, type = 'sine') {
     
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + duration / 1000);
+}
+
+// 帶音量比例與平滑包絡的短音（用於輪盤減速滴答，避免爆音）
+function generateTick(frequency, duration, type = 'triangle', volumeScale = 1) {
+    if (!audioContext || !soundSettings.enabled) return;
+
+    const t0 = audioContext.currentTime;
+    const dur = Math.max(duration / 1000, 0.02);
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    osc.type = type;
+    osc.frequency.value = frequency;
+
+    const peak = Math.max(0.0001, soundSettings.volume * 0.3 * volumeScale);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(peak, t0 + Math.min(0.008, dur * 0.3)); // 短 attack 消爆音
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    osc.start(t0);
+    osc.stop(t0 + dur);
+}
+
+// 輪盤開獎專用：依緩動曲線排程「跟隨減速」的滴答音，營造順暢收尾
+// cubic-bezier(0.08, 0.82, 0.08, 1)：x = 時間比例、y = 旋轉進度
+function scheduleWheelDecelSound(totalMs, finalRotation) {
+    if (!soundSettings.enabled) return [];
+
+    // 自訂音效主題：無法逐格控制，沿用循環播放
+    if (soundSettings.theme === 'custom' && customSounds.spin) {
+        startSpinLoop();
+        return [];
+    }
+
+    const bx = (s) => 3 * (1 - s) * (1 - s) * s * 0.08 + 3 * (1 - s) * s * s * 0.08 + s * s * s;
+    const by = (s) => 3 * (1 - s) * (1 - s) * s * 0.82 + 3 * (1 - s) * s * s * 1.0 + s * s * s;
+
+    const stepDeg = 18;                    // 每轉過 18° 打一個滴答
+    const minGapMs = 55;                   // 起始最快間隔，避免糊成一片
+    const tailGuardMs = totalMs - 40;      // 收尾保護，避免與落定音重疊
+
+    const timers = [];
+    let nextThreshold = stepDeg;
+    let lastTickMs = -Infinity;
+
+    for (let i = 1; i <= 2400; i++) {
+        const s = i / 2400;
+        const tMs = bx(s) * totalMs;
+        const deg = by(s) * finalRotation;
+        while (deg >= nextThreshold) {
+            if (tMs - lastTickMs >= minGapMs && tMs < tailGuardMs) {
+                const progress = Math.min(tMs / totalMs, 1); // 0 → 1
+                // 音高由高到低、音量由強漸弱、時值漸長：越接近停止越綿柔
+                const freq = 900 - 460 * progress;   // 900 → 440 Hz
+                const vol = 0.9 - 0.55 * progress;   // 0.9 → 0.35
+                const dur = 26 + 34 * progress;      // 26 → 60 ms
+                timers.push(setTimeout(() => {
+                    generateTick(freq, dur, 'triangle', vol);
+                }, Math.round(tMs)));
+                lastTickMs = tMs;
+            }
+            nextThreshold += stepDeg;
+        }
+    }
+
+    // 最終落定的柔和一聲，強化「停穩」的收尾感
+    timers.push(setTimeout(() => {
+        generateTick(430, 120, 'sine', 0.5);
+    }, Math.round(Math.max(totalMs - 20, 0))));
+
+    return timers;
+}
+
+// 停止輪盤減速音效（清除排程；若為自訂循環音效一併停止）
+function stopWheelDecelSound(timers) {
+    if (timers && timers.length) {
+        timers.forEach(clearTimeout);
+    }
+    stopSpinLoop();
 }
 
 // 播放音效
