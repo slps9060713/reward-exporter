@@ -1034,8 +1034,8 @@ tbody tr:hover {
 /* 圓餅輪盤 */
 .pie-wheel-area {
     position: relative;
-    width: 260px;
-    height: 280px;
+    width: 300px;
+    height: 330px;
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -1057,8 +1057,8 @@ tbody tr:hover {
 
 /* 外框固定不轉，避免邊框與 conic 疊出異色光暈 */
 .pie-wheel-frame {
-    width: 250px;
-    height: 250px;
+    width: 300px;
+    height: 300px;
     border-radius: 50%;
     border: 5px solid rgba(255, 255, 255, 0.9);
     box-shadow: 0 0 24px rgba(145, 70, 255, 0.4);

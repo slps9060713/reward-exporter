@@ -1971,6 +1971,52 @@ function updateWheelAreaUI(tabId) {
 }
 
 // 繪製等分圓餅（SVG：由正上方起順時針；文字放在扇形中心）
+// 取得輪盤文字所用字體（與 SVG 內文字繼承的 body 字體一致）
+let _labelFontFamily = null;
+function getLabelFontFamily() {
+    if (_labelFontFamily) return _labelFontFamily;
+    let family = '';
+    try {
+        family = getComputedStyle(document.body).fontFamily;
+    } catch (e) {
+        family = '';
+    }
+    _labelFontFamily = family || "'Inter', -apple-system, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif";
+    return _labelFontFamily;
+}
+
+// 量測文字實際渲染寬度（單位與 SVG viewBox 相同）
+let _measureCtx = null;
+function measureTextWidth(text, font) {
+    if (!_measureCtx) {
+        const canvas = document.createElement('canvas');
+        _measureCtx = canvas.getContext('2d');
+    }
+    if (!_measureCtx) return text.length * 10; // 極端情況的保守估計
+    _measureCtx.font = font;
+    return _measureCtx.measureText(text).width;
+}
+
+// 超出可用寬度時，將超出的部分改為顯示 …
+function truncateTextToWidth(text, maxWidth, font) {
+    if (!text) return '';
+    if (measureTextWidth(text, font) <= maxWidth) return text;
+
+    const ellipsis = '…';
+    // 二分搜尋能容納的最長前綴（含 …）
+    let lo = 0;
+    let hi = text.length - 1;
+    while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (measureTextWidth(text.slice(0, mid) + ellipsis, font) <= maxWidth) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return lo > 0 ? text.slice(0, lo) + ellipsis : ellipsis;
+}
+
 function renderPieWheel(tabId, items) {
     const pieWheel = document.getElementById(`pie-wheel-${tabId}`);
     if (!pieWheel) return;
@@ -1990,9 +2036,17 @@ function renderPieWheel(tabId, items) {
     const cy = size / 2;
     const r = size / 2;
     // 橫書：由外沿半徑向內
-    const textStartR = r * (n <= 2 ? 0.88 : n <= 5 ? 0.86 : 0.84);
-    const fontSize = n <= 2 ? 16 : n <= 5 ? 13 : n <= 8 ? 11 : 9;
-    const maxChars = n <= 2 ? 14 : n <= 5 ? 12 : 10;
+    const textStartR = r * (n <= 2 ? 0.92 : n <= 5 ? 0.91 : 0.90);
+    const fontSize = n <= 2 ? 16 : n <= 5 ? 13 : n <= 8 ? 12 : 10;
+
+    // 可用文字長度：由 textStartR 往圓心，但必須在自己的扇形內
+    // 扇形在半徑 d 處的半寬 = d * sin(π/n)；文字半高 = fontSize/2
+    // 故文字最內側需滿足 d >= fontSize / (2 * sin(π/n))，避免壓到相鄰扇形或穿過圓心
+    const wedgeInnerLimit = fontSize / (2 * Math.sin(Math.PI / Math.max(n, 2)));
+    const innerLimit = Math.min(Math.max(wedgeInnerLimit, r * 0.05), textStartR * 0.9);
+    const maxTextWidth = Math.max(textStartR - innerLimit, fontSize);
+    // 與 SVG 文字相同的字型設定（繼承 body 字體），用於實際寬度量測
+    const labelFont = `700 ${fontSize}px ${getLabelFontFamily()}`;
 
     // θ：從正上方起算的順時針弧度；螢幕座標 y 向下
     const pointAt = (theta, radius) => ({
@@ -2018,7 +2072,8 @@ function renderPieWheel(tabId, items) {
         const rot = midDeg - 90 + 180;
         const lp = pointAt(mid, textStartR);
         const raw = getParticipantLabel(items[i]);
-        const text = raw.length > maxChars ? raw.slice(0, maxChars - 1) + '…' : raw;
+        // 依實際渲染寬度截斷（中文字為全寬、英數較窄），超出邊界的部分以 … 取代
+        const text = truncateTextToWidth(raw, maxTextWidth, labelFont);
         labels += `<text x="${lp.x}" y="${lp.y}" transform="rotate(${rot}, ${lp.x}, ${lp.y})" text-anchor="start" dominant-baseline="middle" fill="#fff" font-size="${fontSize}" font-weight="700" style="paint-order:stroke;stroke:rgba(0,0,0,0.55);stroke-width:3px">${escapeHtml(text)}<title>${escapeHtml(raw)}</title></text>`;
     }
 
