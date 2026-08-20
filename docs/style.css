@@ -838,6 +838,27 @@ tbody tr:hover {
     margin-left: -1rem;
 }
 
+/* 輪盤旋轉秒數（人數 input 後方） */
+.wheel-spin-seconds-group {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: -0.75rem;
+}
+
+.wheel-spin-seconds-input {
+    margin-left: 0;
+    width: 68px;
+}
+
+.wheel-spin-seconds-input.invalid {
+    border-color: var(--warning-color);
+}
+
+.wheel-spin-seconds-unit {
+    margin-left: 0;
+}
+
 /* ID 列表 */
 .id-list-container {
     background: var(--background);

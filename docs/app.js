@@ -16,6 +16,10 @@ let continuousMode = false; // 是否啟用連續抽取模式
 let drawnWinners = {}; // 記錄每個分頁已中獎的 ID {tabId: [winnerId1, winnerId2, ...]}
 let wheelMode = false; // 輪盤模式（人數夠少時用圓餅開獎）
 let wheelModeLimit = 5; // 輪盤模式人數上限
+let wheelSpinSeconds = null; // 輪盤旋轉基礎秒數；null = 空白或不合規，使用預設值
+const DEFAULT_WHEEL_SPIN_SECONDS = 5; // 預設基礎秒數（實際總時長再加 0~2 秒隨機）
+const WHEEL_SPIN_SECONDS_MIN = 1;
+const WHEEL_SPIN_SECONDS_MAX = 60;
 let tailNumberStatsEnabled = false; // 是否啟用尾數統計
 let tailNumberStats = { '0-1': 0, '2-3': 0, '4-5': 0, '6-7': 0, '8-9': 0 }; // 尾數統計數據
 let pieSpinning = false; // 圓餅轉動中
@@ -1498,7 +1502,21 @@ function loadGlobalLotteryOptions() {
     }
     const limitInput = document.getElementById('wheelModeLimit');
     if (limitInput) limitInput.value = wheelModeLimit;
-    updateWheelModeLimitVisibility();
+
+    // 還原旋轉秒數（沒存過就留空，代表使用預設 5 秒）
+    const savedSpinSeconds = localStorage.getItem('wheelSpinSeconds');
+    const secondsInput = document.getElementById('wheelSpinSeconds');
+    if (savedSpinSeconds !== null) {
+        const parsedSeconds = parseFloat(savedSpinSeconds);
+        if (!isNaN(parsedSeconds) &&
+            parsedSeconds >= WHEEL_SPIN_SECONDS_MIN &&
+            parsedSeconds <= WHEEL_SPIN_SECONDS_MAX) {
+            wheelSpinSeconds = parsedSeconds;
+            if (secondsInput) secondsInput.value = String(parsedSeconds);
+        } else {
+            localStorage.removeItem('wheelSpinSeconds');
+        }
+    }
     
     const savedTailStats = localStorage.getItem('globalTailNumberStats');
     if (savedTailStats !== null) {
@@ -1525,7 +1543,9 @@ function loadGlobalLotteryOptions() {
 function toggleGlobalContinuousMode(checked) {
     continuousMode = checked;
     localStorage.setItem('globalContinuousMode', checked.toString());
-    
+    // 切換連續模式會改變可抽人數（進而可能改變數字／圓餅模式），清除暫留狀態讓輪盤重繪
+    pieHoldResult = false;
+
     // 獲取當前活躍的分頁
     const activePanel = document.querySelector('.tab-panel.active');
     if (!activePanel) return;
@@ -1556,13 +1576,42 @@ function toggleGlobalContinuousMode(checked) {
     updateWheelAreaUI(tabId);
 }
 
-// 輪盤模式人數 input 顯示／隱藏
-function updateWheelModeLimitVisibility() {
-    const limitInput = document.getElementById('wheelModeLimit');
-    const unit = document.getElementById('wheelModeUnit');
-    const display = wheelMode ? 'inline-block' : 'none';
-    if (limitInput) limitInput.style.display = display;
-    if (unit) unit.style.display = display;
+// 更新輪盤旋轉秒數（空白或不合規 → 使用預設 5 秒）
+function updateWheelSpinSeconds(value) {
+    const input = document.getElementById('wheelSpinSeconds');
+    const raw = String(value == null ? '' : value).trim();
+
+    if (raw === '') {
+        wheelSpinSeconds = null;
+        localStorage.removeItem('wheelSpinSeconds');
+        if (input) input.classList.remove('invalid');
+        return;
+    }
+
+    const parsed = parseFloat(raw);
+    const valid = !isNaN(parsed) &&
+        parsed >= WHEEL_SPIN_SECONDS_MIN &&
+        parsed <= WHEEL_SPIN_SECONDS_MAX;
+
+    if (!valid) {
+        // 不合規：退回預設值，並標示欄位（不強制改寫輸入內容，避免打字被干擾）
+        wheelSpinSeconds = null;
+        localStorage.removeItem('wheelSpinSeconds');
+        if (input) input.classList.add('invalid');
+        return;
+    }
+
+    wheelSpinSeconds = parsed;
+    localStorage.setItem('wheelSpinSeconds', String(parsed));
+    if (input) input.classList.remove('invalid');
+}
+
+// 取得本次旋轉的基礎時長（毫秒）；實際總時長會再加 0~2 秒隨機
+function getWheelSpinBaseMs() {
+    const sec = (typeof wheelSpinSeconds === 'number' && !isNaN(wheelSpinSeconds))
+        ? wheelSpinSeconds
+        : DEFAULT_WHEEL_SPIN_SECONDS;
+    return sec * 1000;
 }
 
 // 全局輪盤模式切換
@@ -1570,7 +1619,6 @@ function toggleGlobalWheelMode(checked) {
     wheelMode = checked;
     localStorage.setItem('globalWheelMode', checked.toString());
     pieHoldResult = false;
-    updateWheelModeLimitVisibility();
     const activePanel = document.querySelector('.tab-panel.active');
     if (activePanel) {
         updateWheelAreaUI(activePanel.id.replace('panel-', ''));
@@ -1880,7 +1928,15 @@ function switchTab(tabId) {
         }
     });
 
+    // 切換分頁：清除暫留狀態，否則新分頁的輪盤不會重繪
+    pieHoldResult = false;
     updateWheelAreaUI(tabId);
+
+    // 輪盤已依目前名單重繪，清掉上一局殘留的「中獎：XXX」提示，避免文字與畫面不一致
+    const switchedInfo = document.querySelector(`#panel-${tabId} .wheel-info`);
+    if (switchedInfo && switchedInfo.textContent.startsWith('中獎')) {
+        switchedInfo.textContent = continuousMode ? '準備下次抽獎' : '準備抽獎';
+    }
 }
 
 // 取得當前可抽參與者
@@ -1940,6 +1996,10 @@ function updateWheelAreaUI(tabId) {
 
     if (pieSpinning) return;
 
+    // 開獎後暫留：完全維持停輪畫面（角度與扇形都不動），直到下次開獎或名單／模式變更才重繪。
+    // 連續模式下中獎者雖已從左側名單移除，輪盤仍保留該局結果，避免停輪瞬間被重置。
+    if (pieHoldResult) return;
+
     const items = getAvailableParticipants(tabId);
     const usePie = shouldUsePieMode(items.length);
 
@@ -1963,9 +2023,6 @@ function updateWheelAreaUI(tabId) {
         }
         return;
     }
-
-    // 開獎剛結束：保留停輪角度，不要重繪歸零（否則指標會對到錯的扇形）
-    if (pieHoldResult) return;
 
     renderPieWheel(tabId, items);
 }
@@ -2133,8 +2190,8 @@ function startPieLottery(tabId, items, winnerNumber) {
     pieWheel.style.transform = 'rotate(0deg)';
     void pieWheel.offsetWidth;
 
-    // 總轉動 5–7 秒；全程由快到慢（無等速段，避免切換頓挫）
-    const totalMs = 5000 + Math.random() * 2000;
+    // 總轉動 =「設定秒數（空白則 5 秒）」+ 0~2 秒隨機；全程由快到慢（無等速段，避免切換頓挫）
+    const totalMs = getWheelSpinBaseMs() + Math.random() * 2000;
     // 前段快、後段長減速：近似 ease-out 但起速更高
     const easing = 'cubic-bezier(0.08, 0.82, 0.08, 1)';
 
@@ -2158,9 +2215,7 @@ function startPieLottery(tabId, items, winnerNumber) {
             const winnerItem = idList.querySelector(`[data-id="${winnerNumber}"]`);
             if (winnerItem) winnerItem.classList.add('winner');
         }
-        if (wheelInfo) {
-            wheelInfo.textContent = `中獎：${getParticipantLabel(items[winnerIndex])}`;
-        }
+        const winnerLabel = getParticipantLabel(items[winnerIndex]);
 
         // 轉盤一停立刻反映左側開獎
         pieHoldResult = true;
@@ -2172,16 +2227,15 @@ function startPieLottery(tabId, items, winnerNumber) {
             startBtn.style.display = '';
         }
 
-        if (continuousMode) {
-            pieHoldResult = false;
-            updateWheelAreaUI(tabId);
-        }
+        // 連續模式不在此重繪：輪盤保持停輪畫面，等下次按「啟動抽獎」時
+        // 由 startPieLottery 依最新名單重繪並立即旋轉，讓重置被旋轉本身蓋掉。
 
         checkAndUpdateLotteryButton(tabId);
-        setTimeout(() => {
-            const again = document.querySelector(`#panel-${tabId} .wheel-info`);
-            if (again) again.textContent = '準備下次抽獎';
-        }, 1200);
+
+        // 中獎文字最後才寫入：checkAndUpdateLotteryButton 會覆蓋 wheel-info，
+        // 且輪盤停在中獎扇形上會一直暫留，所以文字也保留到下次開獎才更換（不再 1.2 秒就消失）。
+        const infoEl = document.querySelector(`#panel-${tabId} .wheel-info`);
+        if (infoEl) infoEl.textContent = `中獎：${winnerLabel}`;
     };
 
     const onTransitionEnd = (e) => {
