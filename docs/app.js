@@ -2178,7 +2178,7 @@ function startPieLottery(tabId, items, winnerNumber) {
     const angle = 360 / n;
     // 落點偏向扇形兩側邊界（製造開獎懸念），但保留安全間距、不緊貼分界線
     const edgeGapMin = angle * 0.01; // 距分界線至少 1%（極貼線、最大懸念）
-    const edgeGapMax = angle * 0.10; // 最多距分界線 10%
+    const edgeGapMax = angle * 0.07; // 最多距分界線 7%
     const offsetFromEdge = edgeGapMin + Math.random() * Math.max(edgeGapMax - edgeGapMin, 0.001);
     const nearStartEdge = Math.random() < 0.5; // 隨機靠左邊界或右邊界
     const withinSegment = nearStartEdge ? offsetFromEdge : (angle - offsetFromEdge);

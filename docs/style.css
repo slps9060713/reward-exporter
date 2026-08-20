@@ -815,6 +815,18 @@ tbody tr:hover {
     margin-right: 0;
 }
 
+/* 尚未開放的選項：整體泛灰、不可點擊 */
+.checkbox-label-disabled,
+.checkbox-label-disabled:hover {
+    color: var(--text-secondary);
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.checkbox-label-disabled input[type="checkbox"] {
+    cursor: not-allowed;
+}
+
 .wheel-mode-limit-input {
     width: 64px;
     padding: 0.35rem 0.45rem;

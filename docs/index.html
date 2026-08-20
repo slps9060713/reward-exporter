@@ -155,14 +155,18 @@
                             </label>
                             <label class="checkbox-label wheel-mode-label">
                                 <input type="checkbox" id="globalWheelMode" onchange="toggleGlobalWheelMode(this.checked)">
-                                <span>輪盤模式・極致</span>
+                                <span>輪盤模式</span>
                             </label>
                             <input type="number" id="wheelModeLimit" class="wheel-mode-limit-input" min="1" max="999" value="5" onchange="updateWheelModeLimit(this.value)" oninput="updateWheelModeLimit(this.value)">
                             <span id="wheelModeUnit" class="wheel-mode-unit">人</span>
                             <div id="wheelSpinSecondsGroup" class="wheel-spin-seconds-group">
-                                <input type="number" id="wheelSpinSeconds" class="wheel-mode-limit-input wheel-spin-seconds-input" min="1" max="60" step="0.5" placeholder="5" onchange="updateWheelSpinSeconds(this.value)" oninput="updateWheelSpinSeconds(this.value)">
+                                <input type="number" id="wheelSpinSeconds" class="wheel-mode-limit-input wheel-spin-seconds-input" min="5" max="60" step="5" placeholder="5-60" onchange="updateWheelSpinSeconds(this.value)" oninput="updateWheelSpinSeconds(this.value)">
                                 <span class="wheel-mode-unit wheel-spin-seconds-unit">秒</span>
                             </div>
+                            <label class="checkbox-label checkbox-label-disabled" title="開發中，尚未開放">
+                                <input type="checkbox" id="globalWheelModeExtreme" disabled>
+                                <span>輪盤模式・極致（開發中）</span>
+                            </label>
                             <label class="checkbox-label">
                                 <input type="checkbox" id="globalTailNumberStats" onchange="toggleTailNumberStats(this.checked)">
                                 <span>尾數統計</span>
