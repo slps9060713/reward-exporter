@@ -163,14 +163,16 @@
                                 <input type="number" id="wheelSpinSeconds" class="wheel-mode-limit-input wheel-spin-seconds-input" min="5" max="60" step="5" placeholder="5-60" onchange="updateWheelSpinSeconds(this.value)" oninput="updateWheelSpinSeconds(this.value)">
                                 <span class="wheel-mode-unit wheel-spin-seconds-unit">秒</span>
                             </div>
-                            <label class="checkbox-label checkbox-label-disabled" title="開發中，尚未開放">
-                                <input type="checkbox" id="globalWheelModeExtreme" disabled>
-                                <span>輪盤模式・極致（開發中）</span>
+                            <label class="checkbox-label checkbox-label-disabled" id="wheelModeExtremeLabel" title="開發中，尚未開放">
+                                <input type="checkbox" id="globalWheelModeExtreme" disabled onchange="toggleGlobalExtremeMode(this.checked)">
+                                <span id="wheelModeExtremeText">輪盤模式・極致（開發中，暫定十月）</span>
                             </label>
+                            <!-- 尾數統計：暫時隱藏（功能與相關函式保留，未來要開回來就把這段還原）
                             <label class="checkbox-label">
                                 <input type="checkbox" id="globalTailNumberStats" onchange="toggleTailNumberStats(this.checked)">
                                 <span>尾數統計</span>
                             </label>
+                            -->
                         </div>
                     </div>
                     
@@ -417,6 +419,7 @@
         </div>
     </div>
 
+    <script src="battle-arena.js"></script>
     <script src="app.js"></script>
     <script src="newyear.js"></script>
 </body>

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>輪盤模式・極致 — 手感調校台</title>
+<style>
+    :root{--bg:#0E0E10;--card:#18181B;--border:#2D2D35;--text:#EFEFF1;--sub:#ADADB8;--primary:#9146FF;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,'Segoe UI','Roboto','Helvetica','Arial',sans-serif;padding:1.5rem;}
+    h1{font-size:1.25rem;margin-bottom:.25rem;}
+    .hint{color:var(--sub);font-size:.85rem;margin-bottom:1.25rem;}
+    .layout{display:grid;grid-template-columns:420px 1fr;gap:1.5rem;align-items:start;}
+    .panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem;}
+    .panel h2{font-size:.95rem;color:var(--primary);margin-bottom:.75rem;}
+    .stage{min-height:520px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1rem;}
+    .row{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;}
+    .row label{flex:0 0 130px;font-size:.8rem;color:var(--sub);}
+    .row input[type=text],.row input[type=number],.row select{flex:1;background:var(--bg);border:1px solid var(--border);
+        border-radius:5px;color:var(--text);padding:.35rem .5rem;font-size:.85rem;}
+    .row input[type=range]{flex:1;accent-color:var(--primary);}
+    .row .val{flex:0 0 62px;text-align:right;font-size:.78rem;color:var(--text);font-variant-numeric:tabular-nums;}
+    button{background:var(--primary);border:none;color:#fff;padding:.55rem 1rem;border-radius:6px;
+        cursor:pointer;font-size:.9rem;font-weight:600;}
+    button.sec{background:#2D2D35;}
+    button:disabled{opacity:.5;cursor:not-allowed;}
+    .btns{display:flex;gap:.5rem;margin:.75rem 0;flex-wrap:wrap;}
+    pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.6rem;
+        font-size:.75rem;color:var(--sub);white-space:pre-wrap;line-height:1.6;max-height:280px;overflow:auto;}
+    fieldset{border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-bottom:.85rem;}
+    legend{font-size:.78rem;color:var(--primary);padding:0 .35rem;}
+</style>
+</head>
+<body>
+<h1>輪盤模式・極致 — 手感調校台</h1>
+<p class="hint">拉桿即時生效，調到滿意後把數值告訴我，我再寫回 <code>battle-arena.js</code> 的預設值。<br>
+「跑 300 局統計」不畫面、純算數字，可以快速確認時長分布與擊飛比例。</p>
+
+<div class="layout">
+    <div>
+        <div class="panel">
+            <h2>對戰設定</h2>
+            <div class="row"><label>人數</label>
+                <select id="count"><option value="2">2 人</option><option value="3" selected>3 人</option><option value="4">4 人</option></select>
+            </div>
+            <div class="row"><label>ID 1</label><input type="text" id="id0" value="FATRAT9924"></div>
+            <div class="row"><label>ID 2</label><input type="text" id="id1" value="滿滿DD最女的置夜行"></div>
+            <div class="row"><label>ID 3</label><input type="text" id="id2" value="beb_10110"></div>
+            <div class="row"><label>ID 4</label><input type="text" id="id3" value="火球鼠火焰"></div>
+            <div class="row"><label>指定中獎者</label><select id="winner"></select></div>
+            <div class="row"><label>種子（可留空）</label><input type="number" id="seed" placeholder="留空 = 隨機"></div>
+            <div class="row"><label>音效</label><input type="checkbox" id="sound" checked></div>
+            <div class="btns">
+                <button id="run">開始對戰</button>
+                <button id="stat" class="sec">跑 300 局統計</button>
+                <button id="reset" class="sec">還原預設</button>
+            </div>
+            <pre id="out">尚未執行。</pre>
+        </div>
+    </div>
+
+    <div>
+        <div class="panel stage"><div id="arena"></div></div>
+        <div class="panel" style="margin-top:1rem">
+            <h2>參數調校</h2>
+            <fieldset><legend>時長與節奏</legend><div id="grp-time"></div></fieldset>
+            <fieldset><legend>運動與軌道</legend><div id="grp-move"></div></fieldset>
+            <fieldset><legend>碰撞與擊飛</legend><div id="grp-hit"></div></fieldset>
+        </div>
+    </div>
+</div>
+
+<script src="battle-arena.js"></script>
+<script>
+const SLIDERS = {
+    'grp-time': [
+        ['spinDecay','轉速衰減／秒',0.008,0.060,0.001],
+        ['targetMinMs','主要時長下限(ms)',5000,60000,1000],
+        ['targetMaxMs','主要時長上限(ms)',5000,60000,1000],
+        ['quickChance','快速決勝比例',0,1,0.02],
+        ['quickMinMs','快速決勝下限(ms)',3000,30000,1000],
+        ['countdownMs','開場倒數(ms)',0,5000,200],
+        ['celebrateMs','勝利演出(ms)',500,6000,200]
+    ],
+    'grp-move': [
+        ['bowlPull','向心回復力',0.3,3,0.05],
+        ['bowlPullFloor','虛弱時的抓地力',0.05,1,0.05],
+        ['driveSpeed','滿轉巡航速度',60,220,5],
+        ['driveSpinFloor','速度／轉速耦合下限',0.1,1,0.05],
+        ['driveVar','個體速度差異',0,0.4,0.02],
+        ['oppositeChance','逆向繞行機率',0,1,0.1],
+        ['wander','隨機擾動',0,25,1]
+    ],
+    'grp-hit': [
+        ['hitTangential','旋轉彈開力道',0.1,1.5,0.05],
+        ['impactCap','撞擊力道上限',50,300,10],
+        ['spinHitLoss','每次撞擊扣血',0.0001,0.002,0.00005],
+        ['minSepSpeed','撞擊後分離速度',5,80,5],
+        ['ringOutSpeed','擊飛門檻速度',20,140,5],
+        ['ringOutMaxSpin','可被擊飛的轉速上限',0.2,1,0.05],
+        ['hitCooldownFrames','撞擊冷卻(格)',2,40,1]
+    ]
+};
+const opts = Object.assign({}, BattleArena.DEFAULTS);
+const inputs = {};
+
+function buildSliders(){
+    for (const gid in SLIDERS){
+        const box = document.getElementById(gid);
+        box.innerHTML = '';
+        SLIDERS[gid].forEach(([key,label,min,max,step])=>{
+            const row=document.createElement('div'); row.className='row';
+            const l=document.createElement('label'); l.textContent=label;
+            const r=document.createElement('input'); r.type='range';
+            r.min=min; r.max=max; r.step=step; r.value=opts[key];
+            const v=document.createElement('span'); v.className='val'; v.textContent=opts[key];
+            r.oninput=()=>{
+                const num=parseFloat(r.value);
+                if(key==='spinDecay'){
+                    // 依人數的衰減表優先，所以要寫進當前人數的那一格
+                    const n=parseInt(document.getElementById('count').value,10);
+                    opts.spinDecayByCount=Object.assign({},opts.spinDecayByCount);
+                    opts.spinDecayByCount[n]=num;
+                }
+                opts[key]=num; v.textContent=r.value;
+            };
+            row.appendChild(l); row.appendChild(r); row.appendChild(v);
+            box.appendChild(row);
+            inputs[key]={range:r,val:v};
+        });
+    }
+}
+
+function entries(){
+    const n=parseInt(document.getElementById('count').value,10);
+    const list=[];
+    for(let i=0;i<n;i++){
+        const el=document.getElementById('id'+i);
+        list.push({ id:'p'+i, label:(el.value||('玩家'+(i+1))) });
+    }
+    return list;
+}
+function syncWinner(){
+    const sel=document.getElementById('winner');
+    const list=entries(); const keep=sel.value;
+    sel.innerHTML='';
+    list.forEach((e,i)=>{ const o=document.createElement('option'); o.value=e.id;
+        o.textContent=(i+1)+'. '+e.label; sel.appendChild(o); });
+    if([...sel.options].some(o=>o.value===keep)) sel.value=keep;
+}
+document.getElementById('count').onchange=()=>{
+    syncWinner();
+    const n=parseInt(document.getElementById('count').value,10);
+    const cur=(opts.spinDecayByCount&&opts.spinDecayByCount[n]!=null)?opts.spinDecayByCount[n]:opts.spinDecay;
+    if(inputs.spinDecay){ inputs.spinDecay.range.value=cur; inputs.spinDecay.val.textContent=cur; }
+};
+[0,1,2,3].forEach(i=>document.getElementById('id'+i).oninput=syncWinner);
+
+const out=document.getElementById('out');
+let running=null;
+
+document.getElementById('run').onclick=()=>{
+    if(running){ running.abort(); running=null; }
+    const list=entries();
+    const winnerId=document.getElementById('winner').value;
+    const seedEl=document.getElementById('seed');
+    opts.sound=document.getElementById('sound').checked;
+    const t0=performance.now();
+    out.textContent='搜尋種子中…';
+    running=BattleArena.start({
+        container:document.getElementById('arena'),
+        entries:list,
+        winnerId:winnerId,
+        seed: seedEl.value!=='' ? parseInt(seedEl.value,10) : undefined,
+        options:opts,
+        onFinish:(res)=>{
+            running=null;
+            out.textContent += '\n\n【結束】勝者 = ' + res.winnerId +
+                (res.aborted ? '（中止：'+res.reason+'）' : '');
+        }
+    });
+    if(running){
+        const i=running.info;
+        out.textContent='搜尋耗時 '+(performance.now()-t0).toFixed(1)+'ms\n'+
+            '種子 '+i.seed+'（試了 '+i.tried+' 個）\n'+
+            '對戰時長 '+(i.durationMs/1000).toFixed(1)+' 秒\n'+
+            '類型 '+(i.exact?'符合偏好區間':'備案（區間內找不到）');
+    } else {
+        out.textContent='搜尋失敗，已交還控制權（實際整合時會退回原本的圓盤開獎）。';
+    }
+};
+
+document.getElementById('stat').onclick=()=>{
+    const n=parseInt(document.getElementById('count').value,10);
+    const trials=300;
+    const durs=[]; let ko=0,stall=0,clash=0,bad=0; const koT=[];
+    const t0=performance.now();
+    for(let k=0;k<trials;k++){
+        const r=BattleArena.simulate(n,opts,(k*2654435761)>>>0,false);
+        if(!r.ok){bad++;continue;}
+        durs.push(r.durationMs);
+        clash+=r.events.filter(e=>e.type==='clash').length;
+        r.deaths.forEach(d=>{ if(d.type==='ringout'){ko++;koT.push(d.frame/60);} else stall++; });
+    }
+    durs.sort((a,b)=>a-b);
+    const q=p=>durs.length?(durs[Math.floor(durs.length*p)]/1000).toFixed(1):'-';
+    const band=(lo,hi)=>Math.round(durs.filter(d=>d>=lo&&d<hi).length/durs.length*100)+'%';
+    out.textContent=
+        '跑 '+trials+' 局（'+(performance.now()-t0).toFixed(0)+'ms）\n'+
+        '生效衰減：'+((opts.spinDecayByCount&&opts.spinDecayByCount[n]!=null)?opts.spinDecayByCount[n]:opts.spinDecay)+'\n'+
+        '無效局：'+bad+'\n'+
+        '時長  最短 '+q(0)+'s / 中位 '+q(0.5)+'s / 最長 '+q(0.99)+'s\n'+
+        '分布  <15s '+band(0,15000)+'  15-30s '+band(15000,30000)+
+        '  30-40s '+band(30000,40000)+'  >40s '+band(40000,1e9)+'\n'+
+        '敗因  擊飛 '+Math.round(ko/(ko+stall)*100)+'%  轉停 '+Math.round(stall/(ko+stall)*100)+'%\n'+
+        '擊飛平均發生在第 '+(koT.length?Math.round(koT.reduce((a,b)=>a+b,0)/koT.length):0)+' 秒\n'+
+        '平均撞擊次數 '+Math.round(clash/Math.max(1,durs.length))+' 次／局';
+};
+
+document.getElementById('reset').onclick=()=>{
+    Object.assign(opts, BattleArena.DEFAULTS);
+    buildSliders();
+    out.textContent='已還原預設值。';
+};
+
+buildSliders();
+syncWinner();
+</script>
+</body>
+</html>

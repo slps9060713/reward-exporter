@@ -16,6 +16,13 @@ let continuousMode = false; // 是否啟用連續抽取模式
 let drawnWinners = {}; // 記錄每個分頁已中獎的 ID {tabId: [winnerId1, winnerId2, ...]}
 let wheelMode = false; // 輪盤模式（人數夠少時用圓餅開獎）
 let wheelModeLimit = 5; // 輪盤模式人數上限
+let extremeMode = false; // 輪盤模式・極致（戰鬥陀螺開獎）
+let extremeStage = null; // 目前掛載的擂台（BattleArena stage）
+let extremeStageTabId = null; // 擂台掛在哪個分頁
+let extremeBattling = false; // 對戰進行中
+const EXTREME_MAX_PLAYERS = 4;   // 極致模式人數上限（顏色辨識與畫面密度的限制）
+const EXTREME_MIN_PLAYERS = 2;
+const EXTREME_UNLOCK_SECONDS = 59; // 測試解鎖：輪盤秒數設為 59 才可勾選極致
 let wheelSpinSeconds = null; // 輪盤旋轉基礎秒數；null = 空白或不合規，使用預設值
 const DEFAULT_WHEEL_SPIN_SECONDS = 5; // 預設基礎秒數（實際總時長再加 0~2 秒隨機）
 const WHEEL_SPIN_SECONDS_MIN = 1;
@@ -1060,6 +1067,7 @@ async function loadRedemptionsForTab(tabId) {
                             <div class="pie-wheel" id="pie-wheel-${tabData.id}"></div>
                         </div>
                     </div>
+                    <div class="extreme-arena-area" id="extreme-arena-area-${tabData.id}" style="display: none;"></div>
                     <div class="wheel-controls">
                         <div class="wheel-info">準備抽獎</div>
                         <button class="btn-primary" id="startBtn-${tabData.id}" onclick="startLottery('${tabData.id}')" ${tabData.participants.length === 0 ? 'disabled' : ''}>
@@ -1193,6 +1201,7 @@ function createTabElements(tabData, isActive = false) {
                             <div class="pie-wheel" id="pie-wheel-${tabData.id}"></div>
                         </div>
                     </div>
+                    <div class="extreme-arena-area" id="extreme-arena-area-${tabData.id}" style="display: none;"></div>
                     <div class="wheel-controls">
                         <div class="wheel-info">準備抽獎</div>
                         <button class="btn-primary" id="startBtn-${tabData.id}" onclick="startLottery('${tabData.id}')">
@@ -1517,18 +1526,24 @@ function loadGlobalLotteryOptions() {
             localStorage.removeItem('wheelSpinSeconds');
         }
     }
-    
-    const savedTailStats = localStorage.getItem('globalTailNumberStats');
-    if (savedTailStats !== null) {
-        tailNumberStatsEnabled = savedTailStats === 'true';
-        const checkbox = document.getElementById('globalTailNumberStats');
-        if (checkbox) checkbox.checked = tailNumberStatsEnabled;
-        // 延遲創建表格，等待分頁創建完成
-        setTimeout(() => {
-            if (tailNumberStatsEnabled) {
-                createTailNumberStatsTable();
-            }
-        }, 100);
+    // 極致模式：依「輪盤已勾選 + 秒數為 59」決定是否解鎖（不記憶解鎖狀態，每次都重新判定）
+    refreshExtremeAvailability();
+
+    // 尾數統計目前在介面上隱藏（index.html 中已註解掉選項），因此強制關閉，
+    // 避免先前存在 localStorage 的開啟狀態殘留、卻沒有 UI 可以關掉。
+    // 功能與相關函式全部保留，未來把選項還原即可恢復。
+    const tailStatsCheckbox = document.getElementById('globalTailNumberStats');
+    if (tailStatsCheckbox) {
+        const savedTailStats = localStorage.getItem('globalTailNumberStats');
+        if (savedTailStats !== null) {
+            tailNumberStatsEnabled = savedTailStats === 'true';
+            tailStatsCheckbox.checked = tailNumberStatsEnabled;
+            setTimeout(() => {
+                if (tailNumberStatsEnabled) createTailNumberStatsTable();
+            }, 100);
+        }
+    } else {
+        tailNumberStatsEnabled = false;
     }
 
     setTimeout(() => {
@@ -1585,6 +1600,7 @@ function updateWheelSpinSeconds(value) {
         wheelSpinSeconds = null;
         localStorage.removeItem('wheelSpinSeconds');
         if (input) input.classList.remove('invalid');
+        refreshExtremeAvailability();
         return;
     }
 
@@ -1598,12 +1614,177 @@ function updateWheelSpinSeconds(value) {
         wheelSpinSeconds = null;
         localStorage.removeItem('wheelSpinSeconds');
         if (input) input.classList.add('invalid');
+        refreshExtremeAvailability();
         return;
     }
 
     wheelSpinSeconds = parsed;
     localStorage.setItem('wheelSpinSeconds', String(parsed));
     if (input) input.classList.remove('invalid');
+    refreshExtremeAvailability();
+}
+
+// ==================== 輪盤模式・極致 ====================
+
+// 是否處於測試解鎖狀態：必須勾選輪盤模式，且秒數剛好設為 59
+function isExtremeUnlocked() {
+    return wheelMode && wheelSpinSeconds === EXTREME_UNLOCK_SECONDS;
+}
+
+// 依解鎖狀態更新極致選項的可勾選／泛灰／文字
+function refreshExtremeAvailability() {
+    const box = document.getElementById('globalWheelModeExtreme');
+    const label = document.getElementById('wheelModeExtremeLabel');
+    const text = document.getElementById('wheelModeExtremeText');
+    const unlocked = isExtremeUnlocked();
+
+    if (box) box.disabled = !unlocked;
+    if (label) {
+        label.classList.toggle('checkbox-label-disabled', !unlocked);
+        label.title = unlocked ? '測試模式已解鎖' : '開發中，尚未開放';
+    }
+    if (text) {
+        text.textContent = unlocked
+            ? '輪盤模式・極致（測試解鎖）'
+            : '輪盤模式・極致（開發中，暫定十月）';
+    }
+
+    // 已鎖上就不能維持勾選狀態，否則會出現「鎖定但仍在生效」的矛盾
+    if (!unlocked && extremeMode) {
+        extremeMode = false;
+        if (box) box.checked = false;
+        pieHoldResult = false;
+        destroyExtremeStage();
+        const activePanel = document.querySelector('.tab-panel.active');
+        if (activePanel) updateWheelAreaUI(activePanel.id.replace('panel-', ''));
+    }
+}
+
+function toggleGlobalExtremeMode(checked) {
+    if (checked && !isExtremeUnlocked()) {   // 保險：未解鎖不允許開啟
+        const box = document.getElementById('globalWheelModeExtreme');
+        if (box) box.checked = false;
+        return;
+    }
+    extremeMode = checked;
+    pieHoldResult = false;
+    if (!checked) destroyExtremeStage();
+    const activePanel = document.querySelector('.tab-panel.active');
+    if (activePanel) updateWheelAreaUI(activePanel.id.replace('panel-', ''));
+}
+
+// 這個人數是否要走極致模式
+function shouldUseExtremeMode(count) {
+    return extremeMode && wheelMode && typeof BattleArena !== 'undefined' &&
+        count >= EXTREME_MIN_PLAYERS && count <= EXTREME_MAX_PLAYERS;
+}
+
+// 把「啟動抽獎」按鈕搬進擂台中央 / 搬回原本的控制列
+function moveStartButtonToArena(tabId, intoArena) {
+    const btn = document.getElementById(`startBtn-${tabId}`);
+    const controls = document.querySelector(`#panel-${tabId} .wheel-controls`);
+    if (!btn || !controls) return;
+    if (intoArena && extremeStage && extremeStage.overlay) {
+        if (btn.parentNode !== extremeStage.overlay) {
+            extremeStage.overlay.insertBefore(btn, extremeStage.resultEl);
+        }
+    } else if (!intoArena && btn.parentNode !== controls) {
+        controls.appendChild(btn);
+    }
+}
+
+function destroyExtremeStage() {
+    if (!extremeStage) return;
+    if (extremeStageTabId) {
+        const controls = document.querySelector(`#panel-${extremeStageTabId} .wheel-controls`);
+        if (controls) controls.style.display = '';      // 先還原控制列，按鈕才看得到
+        moveStartButtonToArena(extremeStageTabId, false);
+    }
+    extremeStage.destroy();
+    extremeStage = null;
+    extremeStageTabId = null;
+    extremeBattling = false;
+}
+
+// 建立（或沿用）待機中的擂台：擂台留空、按鈕在中央、下方名牌已就位
+function ensureExtremeStage(tabId, items) {
+    const area = document.getElementById(`extreme-arena-area-${tabId}`);
+    if (!area || typeof BattleArena === 'undefined') return null;
+
+    const entries = items.map(item => ({
+        id: item.dataset.id,
+        label: getParticipantLabel(item)
+    }));
+
+    // 同一批人就沿用現有擂台，避免每次重繪造成閃爍
+    if (extremeStage && extremeStageTabId === tabId) {
+        const same = extremeStage.entries.length === entries.length &&
+            extremeStage.entries.every((e, i) => e.id === entries[i].id && e.label === entries[i].label);
+        if (same) return extremeStage;
+    }
+    destroyExtremeStage();
+
+    extremeStage = BattleArena.mount({
+        container: area,
+        entries: entries,
+        options: buildExtremeOptions()
+    });
+    extremeStageTabId = tabId;
+    if (extremeStage) moveStartButtonToArena(tabId, true);
+    return extremeStage;
+}
+
+// 極致模式的參數：跟隨現有的音效設定
+function buildExtremeOptions() {
+    return {
+        size: 320,
+        sound: !!(soundSettings && soundSettings.enabled),
+        volume: (soundSettings && typeof soundSettings.volume === 'number') ? soundSettings.volume : 0.35
+    };
+}
+
+// 極致模式開獎
+function startExtremeLottery(tabId, items, winnerNumber) {
+    const stage = ensureExtremeStage(tabId, items);
+    const wheelInfo = document.querySelector(`#panel-${tabId} .wheel-info`);
+    if (!stage) {                      // 掛不起來就退回原本的圓餅開獎
+        startPieLottery(tabId, items, winnerNumber);
+        return;
+    }
+
+    const info = stage.run({
+        winnerId: winnerNumber,
+        onFinish: (res) => {
+            extremeBattling = false;
+            finishExtremeLottery(tabId, winnerNumber, res);
+        }
+    });
+
+    if (!info) {                       // 種子搜尋失敗（極罕見）→ 退回圓餅
+        console.warn('極致模式找不到可用種子，退回圓餅開獎');
+        startPieLottery(tabId, items, winnerNumber);
+        return;
+    }
+
+    extremeBattling = true;
+    pieSpinning = true;                // 沿用既有的「動畫進行中」鎖，避免畫面被重繪
+    if (wheelInfo) wheelInfo.style.display = 'none';   // 保險：勝者文字由擂台內顯示
+}
+
+// 對戰結束（或被跳過／中止）後的收尾：與圓餅開獎完全相同的契約
+function finishExtremeLottery(tabId, winnerNumber, res) {
+    const idList = document.getElementById(`id-list-${tabId}`);
+    if (idList) {
+        const winnerItem = idList.querySelector(`[data-id="${winnerNumber}"]`);
+        if (winnerItem) winnerItem.classList.add('winner');
+    }
+
+    pieSpinning = false;
+    pieHoldResult = true;              // 保留結束畫面，直到下次按下開始
+    handleWinner(tabId, winnerNumber);
+    lotteryBusy = false;
+    checkAndUpdateLotteryButton(tabId);
+    moveStartButtonToArena(tabId, true);   // handleWinner 可能重繪，確保按鈕仍在擂台中央
 }
 
 // 取得本次旋轉的基礎時長（毫秒）；實際總時長會再加 0~2 秒隨機
@@ -1619,6 +1800,8 @@ function toggleGlobalWheelMode(checked) {
     wheelMode = checked;
     localStorage.setItem('globalWheelMode', checked.toString());
     pieHoldResult = false;
+    // 極致是輪盤模式的變體：輪盤關掉，極致也必須關掉並重新鎖上
+    refreshExtremeAvailability();
     const activePanel = document.querySelector('.tab-panel.active');
     if (activePanel) {
         updateWheelAreaUI(activePanel.id.replace('panel-', ''));
@@ -1928,8 +2111,11 @@ function switchTab(tabId) {
         }
     });
 
+    // 對戰進行中被切走：中止動畫，但結果照樣寫入（勝者在動畫開始前就已決定）
+    if (extremeBattling && extremeStage) extremeStage.abort();
     // 切換分頁：清除暫留狀態，否則新分頁的輪盤不會重繪
     pieHoldResult = false;
+    if (extremeStageTabId && extremeStageTabId !== tabId) destroyExtremeStage();
     updateWheelAreaUI(tabId);
 
     // 輪盤已依目前名單重繪，清掉上一局殘留的「中獎：XXX」提示，避免文字與畫面不一致
@@ -2001,6 +2187,30 @@ function updateWheelAreaUI(tabId) {
     if (pieHoldResult) return;
 
     const items = getAvailableParticipants(tabId);
+    const extremeArea = document.getElementById(`extreme-arena-area-${tabId}`);
+    const useExtreme = shouldUseExtremeMode(items.length);
+
+    const controls = document.querySelector(`#panel-${tabId} .wheel-controls`);
+
+    // 極致模式：擂台留空待機，按鈕移到擂台中央，下方名牌先就位
+    if (useExtreme) {
+        digitArea.style.display = 'none';
+        pieArea.style.display = 'none';
+        if (extremeArea) extremeArea.style.display = '';
+        ensureExtremeStage(tabId, items);
+        // 按鈕已移進擂台、狀態文字改由擂台內顯示，整個控制列收起來，
+        // 順便省掉 wheel-container 為它保留的 2rem 間距 → 版面高度不會被撐開
+        if (controls) controls.style.display = 'none';
+        return;
+    }
+
+    // 不是極致模式：拆掉擂台、按鈕與控制列歸位
+    if (extremeArea) extremeArea.style.display = 'none';
+    if (extremeStage) destroyExtremeStage();
+    if (controls) controls.style.display = '';
+    const infoEl = document.querySelector(`#panel-${tabId} .wheel-info`);
+    if (infoEl) infoEl.style.display = '';
+
     const usePie = shouldUsePieMode(items.length);
 
     digitArea.style.display = usePie ? 'none' : '';
@@ -2330,6 +2540,12 @@ function startLottery(tabId) {
     currentWinnerNumber = winnerNumber;
     revealStep = 0;
     pieHoldResult = false;
+
+    // 極致模式（戰鬥陀螺）優先：人數 2~4 且已解鎖並勾選
+    if (shouldUseExtremeMode(items.length)) {
+        startExtremeLottery(tabId, items, winnerNumber);
+        return;
+    }
 
     // 輪盤模式且人數達標：圓餅開獎
     if (shouldUsePieMode(items.length)) {
