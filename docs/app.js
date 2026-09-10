@@ -1,3 +1,4 @@
+// ==================== 全域狀態 ====================
 // Twitch API 設定
 let APP_CLIENT_ID = localStorage.getItem('user_client_id') || ''; // 從 localStorage 讀取
 const REDIRECT_URL = window.location.origin + window.location.pathname;
@@ -10,6 +11,9 @@ let currentRewards = [];
 let allTabs = [];
 let currentWinnerNumber = null;
 let revealStep = 0; // 0: 未開始, 1: 百位數, 2: 十位數, 3: 個位數
+
+// 中獎紀錄（用於右側列表）
+let winnersRecord = [];
 
 // 連續抽取模式
 let continuousMode = false; // 是否啟用連續抽取模式
@@ -49,7 +53,7 @@ let testSolidId = 37465049;
 let testWinningCount = 0;
 let isDebugMode = false;
 
-// DOM 元素
+// ---------- DOM 元素快取 ----------
 const loginPage = document.getElementById('loginPage');
 const mainPage = document.getElementById('mainPage');
 const guestModeBtn = document.getElementById('guestModeBtn');
@@ -108,10 +112,7 @@ const rewardTitle = document.getElementById('rewardTitle');
 const rewardCost = document.getElementById('rewardCost');
 const rewardPrompt = document.getElementById('rewardPrompt');
 
-// 中獎紀錄（用於右側列表）
-let winnersRecord = [];
-
-// 初始化
+// ==================== 初始化 ====================
 function init() {
     loadClientId();
     checkAuthToken();
@@ -121,6 +122,7 @@ function init() {
     loadGlobalLotteryOptions();
 }
 
+// ---------- 事件綁定 ----------
 // 設置事件監聽器
 function setupEventListeners() {
     // 模式切換
@@ -205,6 +207,7 @@ function setupEventListeners() {
     clearAllWinners.addEventListener('click', handleClearAllWinners);
 }
 
+// ==================== 登入頁與 Client ID ====================
 // 切換到未登入模式
 function switchToGuestMode() {
     guestModeBtn.classList.add('active');
@@ -305,6 +308,7 @@ function handleStartGuest() {
 }
 
 
+// ---------- Twitch OAuth 與 Token ----------
 // 檢查授權 Token
 function checkAuthToken() {
     // 從 URL hash 中獲取 token
@@ -524,6 +528,7 @@ async function copyTokenToClipboard() {
     }
 }
 
+// ==================== 全域中獎側欄 ====================
 // 根據 tabId 獲取獎項名稱
 function getRewardNameByTabId(tabId) {
     if (tabId === 'custom') {
@@ -683,6 +688,7 @@ function handleClearAllWinners() {
     }
 }
 
+// ==================== Twitch API 層 ====================
 // 載入獎勵資料
 async function loadRewards() {
     if (!currentToken) {
@@ -788,6 +794,7 @@ async function getCustomRewards() {
     }
 }
 
+// ---------- 建立獎項 ----------
 // 創建自訂獎勵
 async function createCustomReward(title, cost, prompt) {
     try {
@@ -918,6 +925,7 @@ async function handleCreateReward() {
     }
 }
 
+// ---------- 兌換名單 ----------
 // 獲取獎勵兌換記錄（只獲取未完成的）
 async function getRedemptions(rewardId) {
     try {
@@ -960,6 +968,7 @@ async function getRedemptions(rewardId) {
     }
 }
 
+// ==================== 分頁建立與名單載入 ====================
 // 創建分頁（不自動載入兌換記錄）
 async function createTabs() {
     rewardTabs.innerHTML = '';
@@ -1249,6 +1258,7 @@ function createTabElements(tabData, isActive = false) {
     tabContent.appendChild(panel);
 }
 
+// ==================== 自訂名單管理 ====================
 // 取得下一個可用的三位數編號
 function getNextCustomId() {
     if (customEntries.length === 0) return '001';
@@ -1484,6 +1494,7 @@ function removeCustomEntry(entryId) {
     updateWheelAreaUI('custom');
 }
 
+// ==================== 全域抽獎選項 ====================
 // 切換連續抽取模式
 // 載入全局抽獎選項狀態
 function loadGlobalLotteryOptions() {
@@ -1624,7 +1635,7 @@ function updateWheelSpinSeconds(value) {
     refreshExtremeAvailability();
 }
 
-// ==================== 輪盤模式・極致 ====================
+// ==================== 演出：戰鬥陀螺（輪盤模式・極致） ====================
 
 // 是否處於測試解鎖狀態：必須勾選輪盤模式，且秒數剛好設為 59
 function isExtremeUnlocked() {
@@ -1787,6 +1798,7 @@ function finishExtremeLottery(tabId, winnerNumber, res) {
     moveStartButtonToArena(tabId, true);   // handleWinner 可能重繪，確保按鈕仍在擂台中央
 }
 
+// ==================== 輪盤模式選項 ====================
 // 取得本次旋轉的基礎時長（毫秒）；實際總時長會再加 0~2 秒隨機
 function getWheelSpinBaseMs() {
     const sec = (typeof wheelSpinSeconds === 'number' && !isNaN(wheelSpinSeconds))
@@ -1833,6 +1845,7 @@ function toggleContinuousMode(tabId, checked) {
     toggleGlobalContinuousMode(checked);
 }
 
+// ==================== 尾數統計（隱藏中） ====================
 // 切換尾數統計
 function toggleTailNumberStats(checked) {
     tailNumberStatsEnabled = checked;
@@ -1925,6 +1938,7 @@ function updateTailNumberStatsDisplay() {
     });
 }
 
+// ==================== 中獎記帳與分頁切換 ====================
 // 處理連續模式下的中獎項（跳過縮圈時使用）
 // 處理中獎邏輯（所有模式通用）
 function handleWinner(tabId, winnerNumber) {
@@ -2125,6 +2139,7 @@ function switchTab(tabId) {
     }
 }
 
+// ==================== 輪盤區域與圓餅繪製 ====================
 // 取得當前可抽參與者
 function getAvailableParticipants(tabId) {
     const idList = document.getElementById(`id-list-${tabId}`);
@@ -2347,6 +2362,7 @@ function renderPieWheel(tabId, items) {
     pieWheel.innerHTML = `<svg class="pie-svg" viewBox="0 0 ${size} ${size}" width="100%" height="100%" aria-hidden="true">${paths}${labels}</svg>`;
 }
 
+// ==================== 演出：圓餅輪盤 ====================
 // 圓餅開獎
 function startPieLottery(tabId, items, winnerNumber) {
     const pieArea = document.getElementById(`pie-wheel-area-${tabId}`);
@@ -2467,6 +2483,7 @@ function startPieLottery(tabId, items, winnerNumber) {
     setTimeout(finishPieLottery, totalMs + 200);
 }
 
+// ==================== 抽獎總入口與分派 ====================
 // 開始抽獎
 function startLottery(tabId) {
     if (lotteryBusy) {
@@ -2589,6 +2606,7 @@ function startLottery(tabId) {
     }, 50);
 }
 
+// ==================== 演出：數字輪盤＋縮圈 ====================
 // 無彈窗縮圈模式
 function startNoOverlayShrink(tabId, winnerNumber) {
     const wheelNumber = document.querySelector(`#panel-${tabId} .wheel-number`);
@@ -2907,6 +2925,7 @@ function closeResultOverlay() {
     shrinkBtn.disabled = false;
 }
 
+// ==================== UI 狀態與提示 ====================
 // 檢查並更新抽獎按鈕狀態
 function checkAndUpdateLotteryButton(tabId) {
     const idList = document.getElementById(`id-list-${tabId}`);
