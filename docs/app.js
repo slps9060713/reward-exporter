@@ -24,9 +24,9 @@ let extremeMode = false; // 輪盤模式・極致（戰鬥陀螺開獎）
 let extremeStage = null; // 目前掛載的擂台（BattleArena stage）
 let extremeStageTabId = null; // 擂台掛在哪個分頁
 let extremeBattling = false; // 對戰進行中
-const EXTREME_MAX_PLAYERS = 4;   // 極致模式人數上限（顏色辨識與畫面密度的限制）
+const EXTREME_MAX_PLAYERS = 5;   // 極致模式人數上限（顏色辨識與畫面密度的限制）
+                                 // 上限受 BattleArena.COLORS 的色數約束，不可超過它
 const EXTREME_MIN_PLAYERS = 2;
-const EXTREME_UNLOCK_SECONDS = 59; // 測試解鎖：輪盤秒數設為 59 才可勾選極致
 let wheelSpinSeconds = null; // 輪盤旋轉基礎秒數；null = 空白或不合規，使用預設值
 const DEFAULT_WHEEL_SPIN_SECONDS = 5; // 預設基礎秒數（實際總時長再加 0~2 秒隨機）
 const WHEEL_SPIN_SECONDS_MIN = 1;
@@ -1537,7 +1537,15 @@ function loadGlobalLotteryOptions() {
             localStorage.removeItem('wheelSpinSeconds');
         }
     }
-    // 極致模式：依「輪盤已勾選 + 秒數為 59」決定是否解鎖（不記憶解鎖狀態，每次都重新判定）
+    // 還原極致模式（輪盤模式也開著才生效）
+    const savedExtreme = localStorage.getItem('globalWheelModeExtreme');
+    if (savedExtreme !== null) {
+        extremeMode = savedExtreme === 'true' && wheelMode;
+        localStorage.setItem('globalWheelModeExtreme', extremeMode.toString());   // 輪盤沒開時一併校正成 false
+        const box = document.getElementById('globalWheelModeExtreme');
+        if (box) box.checked = extremeMode;
+    }
+    // 極致模式：依輪盤模式是否勾選決定可否勾選
     refreshExtremeAvailability();
 
     // 尾數統計目前在介面上隱藏（index.html 中已註解掉選項），因此強制關閉，
@@ -1611,7 +1619,6 @@ function updateWheelSpinSeconds(value) {
         wheelSpinSeconds = null;
         localStorage.removeItem('wheelSpinSeconds');
         if (input) input.classList.remove('invalid');
-        refreshExtremeAvailability();
         return;
     }
 
@@ -1625,45 +1632,38 @@ function updateWheelSpinSeconds(value) {
         wheelSpinSeconds = null;
         localStorage.removeItem('wheelSpinSeconds');
         if (input) input.classList.add('invalid');
-        refreshExtremeAvailability();
         return;
     }
 
     wheelSpinSeconds = parsed;
     localStorage.setItem('wheelSpinSeconds', String(parsed));
     if (input) input.classList.remove('invalid');
-    refreshExtremeAvailability();
 }
 
 // ==================== 演出：戰鬥陀螺（輪盤模式・極致） ====================
 
-// 是否處於測試解鎖狀態：必須勾選輪盤模式，且秒數剛好設為 59
-function isExtremeUnlocked() {
-    return wheelMode && wheelSpinSeconds === EXTREME_UNLOCK_SECONDS;
+// 極致是輪盤模式的變體：必須勾選輪盤模式才可勾選
+function isExtremeAvailable() {
+    return wheelMode;
 }
 
-// 依解鎖狀態更新極致選項的可勾選／泛灰／文字
+// 依輪盤模式狀態更新極致選項的可勾選／泛灰
 function refreshExtremeAvailability() {
     const box = document.getElementById('globalWheelModeExtreme');
     const label = document.getElementById('wheelModeExtremeLabel');
-    const text = document.getElementById('wheelModeExtremeText');
-    const unlocked = isExtremeUnlocked();
+    const available = isExtremeAvailable();
 
-    if (box) box.disabled = !unlocked;
+    if (box) box.disabled = !available;
     if (label) {
-        label.classList.toggle('checkbox-label-disabled', !unlocked);
-        label.title = unlocked ? '測試模式已解鎖' : '開發中，尚未開放';
-    }
-    if (text) {
-        text.textContent = unlocked
-            ? '輪盤模式・極致（測試解鎖）'
-            : '輪盤模式・極致（開發中，暫定十月）';
+        label.classList.toggle('checkbox-label-disabled', !available);
+        label.title = available ? '' : '需先勾選輪盤模式';
     }
 
-    // 已鎖上就不能維持勾選狀態，否則會出現「鎖定但仍在生效」的矛盾
-    if (!unlocked && extremeMode) {
+    // 不可勾選時就不能維持勾選狀態，否則會出現「泛灰但仍在生效」的矛盾
+    if (!available && extremeMode) {
         extremeMode = false;
         if (box) box.checked = false;
+        localStorage.setItem('globalWheelModeExtreme', 'false');   // 重新整理後也維持取消，與當下一致
         pieHoldResult = false;
         destroyExtremeStage();
         const activePanel = document.querySelector('.tab-panel.active');
@@ -1672,12 +1672,13 @@ function refreshExtremeAvailability() {
 }
 
 function toggleGlobalExtremeMode(checked) {
-    if (checked && !isExtremeUnlocked()) {   // 保險：未解鎖不允許開啟
+    if (checked && !isExtremeAvailable()) {   // 保險：輪盤模式未勾選不允許開啟
         const box = document.getElementById('globalWheelModeExtreme');
         if (box) box.checked = false;
         return;
     }
     extremeMode = checked;
+    localStorage.setItem('globalWheelModeExtreme', checked.toString());
     pieHoldResult = false;
     if (!checked) destroyExtremeStage();
     const activePanel = document.querySelector('.tab-panel.active');
@@ -2558,7 +2559,7 @@ function startLottery(tabId) {
     revealStep = 0;
     pieHoldResult = false;
 
-    // 極致模式（戰鬥陀螺）優先：人數 2~4 且已解鎖並勾選
+    // 極致模式（戰鬥陀螺）優先：人數 2~5 且已勾選
     if (shouldUseExtremeMode(items.length)) {
         startExtremeLottery(tabId, items, winnerNumber);
         return;

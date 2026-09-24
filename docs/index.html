@@ -163,9 +163,9 @@
                                 <input type="number" id="wheelSpinSeconds" class="wheel-mode-limit-input wheel-spin-seconds-input" min="5" max="60" step="5" placeholder="5-60" onchange="updateWheelSpinSeconds(this.value)" oninput="updateWheelSpinSeconds(this.value)">
                                 <span class="wheel-mode-unit wheel-spin-seconds-unit">秒</span>
                             </div>
-                            <label class="checkbox-label checkbox-label-disabled" id="wheelModeExtremeLabel" title="開發中，尚未開放">
+                            <label class="checkbox-label checkbox-label-disabled" id="wheelModeExtremeLabel" title="需先勾選輪盤模式">
                                 <input type="checkbox" id="globalWheelModeExtreme" disabled onchange="toggleGlobalExtremeMode(this.checked)">
-                                <span id="wheelModeExtremeText">輪盤模式・極致（開發中，暫定十月）</span>
+                                <span>輪盤模式・極致（上限五人）</span>
                             </label>
                             <!-- 尾數統計：暫時隱藏（功能與相關函式保留，未來要開回來就把這段還原）
                             <label class="checkbox-label">

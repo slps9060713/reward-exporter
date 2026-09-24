@@ -12,7 +12,7 @@
  * 用法
  *   BattleArena.start({
  *     container,                              // 放置畫面的 DOM 容器
- *     entries: [{ id, label }, ...],          // 2~4 人
+ *     entries: [{ id, label }, ...],          // 2~MAX_PLAYERS 人（目前 5）
  *     winnerId,                               // 預先決定的中獎者 id
  *     options: {},                            // 可選，覆寫 DEFAULTS
  *     onEvent: (evt) => {},                   // 可選：clash / stall / ringout / win
@@ -61,7 +61,9 @@
         spinDecayByCount: {     // 依參戰人數的衰減：人少時碰撞少，要衰減快一點才會落在目標時長
             2: 0.044,
             3: 0.038,
-            4: 0.026
+            4: 0.026,
+            5: 0.018   // 由 (2,3,4) 最小平方線性擬合外推（斜率 −0.009）；
+                       // 實測 5 人中位 27.8s、p10~p90 = 17.1~34.1s
         },
         spinSpeedDrain: 0.00010,// 移動額外消耗
         spinHitLoss: 0.00042,   // 每次碰撞的消耗係數（乘上撞擊力道）
@@ -102,7 +104,10 @@
     };
 
     // 顏色（沿用 app.js 的調色盤色相，但不加暗色遮罩，讓對撞更醒目）
-    const COLORS = ['#9146FF', '#2EC4B6', '#FF9F1C', '#E71D36'];
+    const COLORS = ['#9146FF', '#2EC4B6', '#FF9F1C', '#E71D36', '#8AC926'];
+    // 參戰人數上限＝可辨識的顏色數。限制來自顏色辨識與畫面密度，不是效能，
+    // 所以要放寬上限就是加一個色相分得開的顏色（別直接改數字）。
+    const MAX_PLAYERS = COLORS.length;
 
     const STRIDE = 4;           // 每格每人存 x, y, spin, state
     const ALIVE = 0, STALLED = 1, FLYING = 2, GONE = 3;
@@ -549,7 +554,7 @@
         ensureStyles();
         const o = Object.assign({}, DEFAULTS, cfg.options || {});
         const container = cfg.container;
-        const entries = (cfg.entries || []).slice(0, 4).map((e, i) => ({
+        const entries = (cfg.entries || []).slice(0, MAX_PLAYERS).map((e, i) => ({
             id: e.id, label: e.label, color: e.color || COLORS[i % COLORS.length]
         }));
         const n = entries.length;
