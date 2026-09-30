@@ -46,11 +46,13 @@
         driveVar: 0.14,         // 每顆陀螺的巡航速度差異 → 軌道半徑不同才會互相追撞
         driveSpinFloor: 0.5,    // 速度與轉速的耦合下限：速度 = drive × (floor + (1-floor) × 轉速)
                                 // 太低 → 虛弱的陀螺縮在中央永遠不會被擊飛，只能等轉停
-        oppositeChance: 0.5,    // 每顆陀螺獨立決定是否逆向的機率（僅 dirMode='random' 時使用）
+        oppositeChance: 0.5,    // 每顆陀螺獨立決定是否逆向的機率（dirMode='random' / 'mixed' 時使用）
                                 // 注意：0.5 才是「最容易出現對向繞行」的值；
                                 // 設成 1.0 會讓所有陀螺一起逆向 → 變成全部同向 → 幾乎不對撞
-        dirMode: 'random',      // 'random'    = 每顆獨立隨機（實測手感最好，預設）
-                                // 'alternate' = 奇偶交錯、保證對向，但正面對撞過猛（2 人局會 5 秒收場）
+        dirMode: 'mixed',       // 'mixed'     = 每顆獨立隨機，但保證至少一對反向（預設）：
+                                //               全部同向時把最後一顆翻成逆向。2 人局＝必定對向
+                                // 'random'    = 每顆獨立隨機（可能全部同向 → 只剩追撞、沒有正面對撞的張力）
+                                // 'alternate' = 奇偶交錯、保證對向
         wander: 7,              // 微小擾動，避免完美對稱
         seekPull: 2,            // 進攻傾向：久未碰撞時，「獵手」朝最近對手的拉力（與距離成正比）。0 = 關閉
                                 // 獵手＝開場轉速較高的一方，只追開場轉速比自己低的對手。
@@ -100,6 +102,8 @@
         searchMaxSeeds: 4000,   // 最多試幾個種子
         searchMaxMs: 800,       // 搜尋時間上限（毫秒）
         searchCandidates: 6,    // 收集幾個符合條件的候選，再從中挑「最有戲」的那一場播出
+        heavyImpact: 100,       // 撞擊力道達到此值算「重擊」（正面對撞；追撞通常只有 40～60）
+        dramaHeavy: 2,          // 戲劇性評分中，每次重擊額外加幾分 → 偏好正面對撞多的場次
 
         // --- 演出 ---
         countdownMs: 3000,      // 開場倒數：3 格 × 1 秒，配合賽車燈號式的嘟聲節奏
@@ -153,6 +157,7 @@
 
         // 初始擺位：等角分布 + 隨機抖動
         const tops = [];
+        const tangent = [];   // 每顆初速的切線分量與方向（'mixed' 模式翻轉方向用）
         const baseAngle = rand() * Math.PI * 2;
         const dirFlip = rand() < 0.5 ? 1 : -1;
         for (let i = 0; i < n; i++) {
@@ -166,17 +171,27 @@
             } else {
                 dir = rand() < o.oppositeChance ? -1 : 1;
             }
+            const tvx = -Math.sin(a) * speed * dir;
+            const tvy = Math.cos(a) * speed * dir;
+            tangent.push({ dir: dir, tvx: tvx, tvy: tvy });
             tops.push({
                 x: Math.cos(a) * d,
                 y: Math.sin(a) * d,
                 // 初速方向偏切線，讓它們先繞圈再交會
-                vx: -Math.sin(a) * speed * dir + (rand() - 0.5) * 12,
-                vy: Math.cos(a) * speed * dir + (rand() - 0.5) * 12,
+                vx: tvx + (rand() - 0.5) * 12,
+                vy: tvy + (rand() - 0.5) * 12,
                 spin: 1 - rand() * o.initSpinVar,
                 // 每顆的巡航速度略有不同 → 軌道半徑不同 → 會互相追上
                 drive: o.driveSpeed * (1 + (rand() - 0.5) * 2 * o.driveVar),
                 state: ALIVE
             });
+        }
+        // 'mixed'：全部同向時，把最後一顆翻成逆向，保證至少一對正面對撞的機會。
+        // 擺位本身是隨機的，翻哪一顆都一樣；不多耗亂數，其餘設定照舊。
+        if (o.dirMode === 'mixed' && n >= 2 && tangent.every(t => t.dir === tangent[0].dir)) {
+            const k = n - 1;
+            tops[k].vx -= 2 * tangent[k].tvx;
+            tops[k].vy -= 2 * tangent[k].tvy;
         }
 
         // 獵手身分由開場轉速決定、整場固定。若改用「當下轉速」，兩者相近時
@@ -396,6 +411,7 @@
             winnerIndex: winnerIndex,
             winnerEndSpin: winnerEndSpin,
             clashes: events.reduce((c, e) => c + (e.type === 'clash' ? 1 : 0), 0),
+            heavyHits: events.reduce((c, e) => c + (e.type === 'clash' && e.impact >= o.heavyImpact ? 1 : 0), 0),
             finishType: deaths.length ? deaths[deaths.length - 1].type : null,
             durationMs: durationMs,
             totalFrames: f,
@@ -418,8 +434,9 @@
         const loQuick = o.quickMinMs, hiQuick = o.targetMinMs;
         const wantCandidates = Math.max(1, o.searchCandidates || 1);
 
-        // 戲劇性評分：撞擊多、以擊飛收場、勝者也快沒力了（險勝）→ 分數高
+        // 戲劇性評分：撞擊多、正面重擊多、以擊飛收場、勝者也快沒力了（險勝）→ 分數高
         const drama = (r) => r.clashes
+            + o.dramaHeavy * r.heavyHits
             + (r.finishType === 'ringout' ? 4 : 0)
             + Math.max(0, 3 - r.winnerEndSpin * 6);
 

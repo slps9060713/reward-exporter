@@ -50,6 +50,9 @@
             <div class="row"><label>ID 5</label><input type="text" id="id4" value="kirin_0v0"></div>
             <div class="row"><label>指定中獎者</label><select id="winner"></select></div>
             <div class="row"><label>種子（可留空）</label><input type="number" id="seed" placeholder="留空 = 隨機"></div>
+            <div class="row"><label>開場方向</label>
+                <select id="dirMode"><option value="mixed">保證至少一對反向</option><option value="random">完全隨機</option><option value="alternate">奇偶交錯</option></select>
+            </div>
             <div class="row"><label>音效</label><input type="checkbox" id="sound" checked></div>
             <div class="btns">
                 <button id="run">開始對戰</button>
@@ -102,7 +105,9 @@ const SLIDERS = {
         ['minSepSpeed','撞擊後分離速度',5,80,5],
         ['ringOutSpeed','擊飛門檻速度',20,140,5],
         ['ringOutMaxSpin','可被擊飛的轉速上限',0.2,1,0.05],
-        ['hitCooldownFrames','撞擊冷卻(格)',2,40,1]
+        ['hitCooldownFrames','撞擊冷卻(格)',2,40,1],
+        ['heavyImpact','重擊門檻(力道)',50,130,5],
+        ['dramaHeavy','挑場次：每次重擊加分',0,6,0.5]
     ]
 };
 const opts = Object.assign({}, BattleArena.DEFAULTS);
@@ -176,6 +181,8 @@ document.getElementById('count').onchange=()=>{
     }
 };
 [0,1,2,3,4].forEach(i=>document.getElementById('id'+i).oninput=syncWinner);
+const dirSel=document.getElementById('dirMode');
+dirSel.onchange=()=>{ opts.dirMode=dirSel.value; };
 
 const out=document.getElementById('out');
 let running=null;
@@ -214,14 +221,17 @@ document.getElementById('run').onclick=()=>{
 document.getElementById('stat').onclick=()=>{
     const n=parseInt(document.getElementById('count').value,10);
     const trials=300;
-    const durs=[]; let ko=0,stall=0,clash=0,bad=0,noClash=0; const koT=[],gaps=[];
+    const durs=[]; let ko=0,stall=0,clash=0,bad=0,noClash=0,heavy=0,impSum=0; const koT=[],gaps=[];
     const t0=performance.now();
     for(let k=0;k<trials;k++){
         const r=BattleArena.simulate(n,opts,(k*2654435761)>>>0,false);
         if(!r.ok){bad++;continue;}
         durs.push(r.durationMs);
-        const ct=r.events.filter(e=>e.type==='clash').map(e=>e.frame/60);
+        const ce=r.events.filter(e=>e.type==='clash');
+        const ct=ce.map(e=>e.frame/60);
         clash+=ct.length;
+        heavy+=r.heavyHits;
+        ce.forEach(e=>{ impSum+=Math.min(e.impact,opts.impactCap); });
         if(!ct.length) noClash++;
         // 最長無碰撞空窗（含開場到第一撞、最後一撞到結束）
         let prev=0,gap=0;
@@ -245,15 +255,19 @@ document.getElementById('stat').onclick=()=>{
         '擊飛平均發生在第 '+(koT.length?Math.round(koT.reduce((a,b)=>a+b,0)/koT.length):0)+' 秒\n'+
         '平均撞擊次數 '+Math.round(clash/Math.max(1,durs.length))+' 次／局'+
         '（完全沒撞到 '+Math.round(noClash/Math.max(1,durs.length)*100)+'%）\n'+
+        '重擊 '+(heavy/Math.max(1,durs.length)).toFixed(1)+' 次／局  平均撞擊力道 '+Math.round(impSum/Math.max(1,clash))+
+        '（上限 '+opts.impactCap+'）\n'+
         '最長無碰撞空窗  中位 '+qg(0.5)+'s / p90 '+qg(0.9)+'s';
 };
 
 document.getElementById('reset').onclick=()=>{
     Object.assign(opts, BattleArena.DEFAULTS);
+    dirSel.value=opts.dirMode;
     buildSliders();
     out.textContent='已還原預設值。';
 };
 
+dirSel.value=opts.dirMode;
 buildSliders();
 syncWinner();
 </script>
