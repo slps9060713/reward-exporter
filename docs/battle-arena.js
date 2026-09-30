@@ -52,6 +52,11 @@
         dirMode: 'random',      // 'random'    = 每顆獨立隨機（實測手感最好，預設）
                                 // 'alternate' = 奇偶交錯、保證對向，但正面對撞過猛（2 人局會 5 秒收場）
         wander: 7,              // 微小擾動，避免完美對稱
+        seekPull: 2,            // 進攻傾向：久未碰撞時，「獵手」朝最近對手的拉力（與距離成正比）。0 = 關閉
+                                // 獵手＝開場轉速較高的一方，只追開場轉速比自己低的對手。
+                                // 沒有它，兩人同向繞行時會隔著圓心一路轉到停，一次都碰不到
+        seekIdleSec: 1,         // 多久沒撞到才開始追（開賽時視為已等滿 —— 倒數本身就是等待）
+        seekRampSec: 1,         // 追擊拉力從 0 爬升到滿的時間
         initSpeed: 120,         // 初速（貼近巡航速度，避免開場就往外甩）
         initSpeedVar: 0.15,     // 初速隨機幅度
         initSpinVar: 0.07,      // 初始轉速差異，避免同時轉停造成平手
@@ -62,9 +67,10 @@
             2: 0.044,
             3: 0.038,
             4: 0.026,
-            5: 0.018   // 由 (2,3,4) 最小平方線性擬合外推（斜率 −0.009）；
-                       // 實測 5 人中位 27.8s、p10~p90 = 17.1~34.1s
-        },
+            5: 0.018   // 由 (2,3,4) 最小平方線性擬合外推（斜率 −0.009）
+        },             // 註：這張表是加入 seekPull 之前調的。碰撞變多後自然時長變短
+                       //（中位 2 人 13.1s、3 人 9.6s、4 人 12.9s、5 人 16.3s），
+                       // 但播出長度由 targetMinMs/targetMaxMs 夾住，不受影響
         spinSpeedDrain: 0.00010,// 移動額外消耗
         spinHitLoss: 0.00042,   // 每次碰撞的消耗係數（乘上撞擊力道）
 
@@ -173,8 +179,15 @@
             });
         }
 
+        // 獵手身分由開場轉速決定、整場固定。若改用「當下轉速」，兩者相近時
+        // 追擊的一方因跑得多而耗損較快、反被超越，角色來回交換，誰也追不到誰。
+        for (const t of tops) t.spin0 = t.spin;
+
         const frames = record ? new Float32Array(maxFrames * n * STRIDE) : null;
         const lastHit = new Int32Array(n * n).fill(-9999);   // 每對陀螺上次計為撞擊的格數
+        // 每顆上次撞擊的格數（進攻傾向用）。起始值讓開賽就能開始追擊
+        const lastClash = new Int32Array(n).fill(-Math.ceil(o.seekIdleSec * o.fps));
+        const seekX = new Float64Array(n), seekY = new Float64Array(n);
         const events = [];
         const deaths = [];
         let alive = n;
@@ -213,6 +226,29 @@
                 break;
             }
 
+            // ---- 進攻傾向 ----
+            // 碗狀擂台近似簡諧運動：繞行角速度與速度、半徑無關，所以同向繞行的陀螺
+            // 會一直維持開場的相位差（兩人局就是隔著圓心對望，直到轉停）。
+            // 必須是單方追擊：雙方互拉時，兩人局的拉力正好通過圓心，
+            // 屬於中心力，改變不了相位差。先算完再積分，避免依陀螺順序而不對稱。
+            for (let i = 0; i < n; i++) {
+                seekX[i] = 0; seekY[i] = 0;
+                const t = tops[i];
+                if (!(o.seekPull > 0) || t.state !== ALIVE) continue;
+                const idle = (f - lastClash[i]) * dt - o.seekIdleSec;
+                if (idle <= 0) continue;
+                const ramp = o.seekRampSec > 0 ? Math.min(1, idle / o.seekRampSec) : 1;
+                let best = -1, bd = Infinity;
+                for (let j = 0; j < n; j++) {
+                    if (j === i || tops[j].state !== ALIVE) continue;
+                    const dd = Math.hypot(tops[j].x - t.x, tops[j].y - t.y);
+                    if (dd < bd) { bd = dd; best = j; }
+                }
+                if (best < 0 || tops[best].spin0 >= t.spin0) continue;   // 最近的對手比自己強 → 不追
+                seekX[i] = o.seekPull * ramp * (tops[best].x - t.x);
+                seekY[i] = o.seekPull * ramp * (tops[best].y - t.y);
+            }
+
             // ---- 積分 ----
             for (let i = 0; i < n; i++) {
                 const t = tops[i];
@@ -249,6 +285,8 @@
                 // 微擾
                 ax += (rand() - 0.5) * o.wander;
                 ay += (rand() - 0.5) * o.wander;
+                ax += seekX[i];
+                ay += seekY[i];
 
                 t.vx += ax * dt;
                 t.vy += ay * dt;
@@ -304,6 +342,8 @@
                     const pair = i * n + j;
                     if (f - lastHit[pair] < o.hitCooldownFrames) continue;
                     lastHit[pair] = f;
+                    lastClash[i] = f;
+                    lastClash[j] = f;
 
                     // 轉速消耗：轉速低的一方吃虧更多
                     const sum = a.spin + b.spin + 1e-6;

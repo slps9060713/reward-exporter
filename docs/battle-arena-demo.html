@@ -90,7 +90,10 @@ const SLIDERS = {
         ['driveSpinFloor','速度／轉速耦合下限',0.1,1,0.05],
         ['driveVar','個體速度差異',0,0.4,0.02],
         ['oppositeChance','逆向繞行機率',0,1,0.1],
-        ['wander','隨機擾動',0,25,1]
+        ['wander','隨機擾動',0,25,1],
+        ['seekPull','進攻拉力（0 = 關閉）',0,4,0.1],
+        ['seekIdleSec','多久沒撞才開始追(秒)',0,5,0.25],
+        ['seekRampSec','追擊拉力爬升(秒)',0,3,0.25]
     ],
     'grp-hit': [
         ['hitTangential','旋轉彈開力道',0.1,1.5,0.05],
@@ -211,17 +214,25 @@ document.getElementById('run').onclick=()=>{
 document.getElementById('stat').onclick=()=>{
     const n=parseInt(document.getElementById('count').value,10);
     const trials=300;
-    const durs=[]; let ko=0,stall=0,clash=0,bad=0; const koT=[];
+    const durs=[]; let ko=0,stall=0,clash=0,bad=0,noClash=0; const koT=[],gaps=[];
     const t0=performance.now();
     for(let k=0;k<trials;k++){
         const r=BattleArena.simulate(n,opts,(k*2654435761)>>>0,false);
         if(!r.ok){bad++;continue;}
         durs.push(r.durationMs);
-        clash+=r.events.filter(e=>e.type==='clash').length;
+        const ct=r.events.filter(e=>e.type==='clash').map(e=>e.frame/60);
+        clash+=ct.length;
+        if(!ct.length) noClash++;
+        // 最長無碰撞空窗（含開場到第一撞、最後一撞到結束）
+        let prev=0,gap=0;
+        ct.concat([r.durationMs/1000]).forEach(t=>{ gap=Math.max(gap,t-prev); prev=t; });
+        gaps.push(gap);
         r.deaths.forEach(d=>{ if(d.type==='ringout'){ko++;koT.push(d.frame/60);} else stall++; });
     }
     durs.sort((a,b)=>a-b);
+    gaps.sort((a,b)=>a-b);
     const q=p=>durs.length?(durs[Math.floor(durs.length*p)]/1000).toFixed(1):'-';
+    const qg=p=>gaps.length?gaps[Math.floor(gaps.length*p)].toFixed(1):'-';
     const band=(lo,hi)=>Math.round(durs.filter(d=>d>=lo&&d<hi).length/durs.length*100)+'%';
     out.textContent=
         '跑 '+trials+' 局（'+(performance.now()-t0).toFixed(0)+'ms）\n'+
@@ -232,7 +243,9 @@ document.getElementById('stat').onclick=()=>{
         '  30-40s '+band(30000,40000)+'  >40s '+band(40000,1e9)+'\n'+
         '敗因  擊飛 '+Math.round(ko/(ko+stall)*100)+'%  轉停 '+Math.round(stall/(ko+stall)*100)+'%\n'+
         '擊飛平均發生在第 '+(koT.length?Math.round(koT.reduce((a,b)=>a+b,0)/koT.length):0)+' 秒\n'+
-        '平均撞擊次數 '+Math.round(clash/Math.max(1,durs.length))+' 次／局';
+        '平均撞擊次數 '+Math.round(clash/Math.max(1,durs.length))+' 次／局'+
+        '（完全沒撞到 '+Math.round(noClash/Math.max(1,durs.length)*100)+'%）\n'+
+        '最長無碰撞空窗  中位 '+qg(0.5)+'s / p90 '+qg(0.9)+'s';
 };
 
 document.getElementById('reset').onclick=()=>{
