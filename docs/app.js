@@ -51,7 +51,7 @@ let customSounds = {};
 let spinLoopAudio = null;
 let testSolidId = 37465049;
 let testWinningCount = 0;
-let isDebugMode = false;
+let isDebugMode = true;
 
 // ---------- DOM 元素快取 ----------
 const loginPage = document.getElementById('loginPage');
