@@ -151,7 +151,7 @@
                         <div class="continuous-mode-option">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="globalContinuousMode" onchange="toggleGlobalContinuousMode(this.checked)">
-                                <span>連續抽取（移除已中獎選項）</span>
+                                <span>連續抽取（移除已中獎）</span>
                             </label>
                             <label class="checkbox-label wheel-mode-label">
                                 <input type="checkbox" id="globalWheelMode" onchange="toggleGlobalWheelMode(this.checked)">
@@ -166,6 +166,11 @@
                             <label class="checkbox-label checkbox-label-disabled" id="wheelModeExtremeLabel" title="需先勾選輪盤模式">
                                 <input type="checkbox" id="globalWheelModeExtreme" disabled onchange="toggleGlobalExtremeMode(this.checked)">
                                 <span>輪盤模式・極致（上限五人）</span>
+                            </label>
+                            <!-- 極致錦標賽：開發中，尚無功能，僅佔位顯示（永遠 disabled） -->
+                            <label class="checkbox-label checkbox-label-disabled" id="extremeTournamentLabel" title="開發中">
+                                <input type="checkbox" id="globalExtremeTournament" disabled>
+                                <span>極致錦標賽(開發中)</span>
                             </label>
                             <!-- 尾數統計：暫時隱藏（功能與相關函式保留，未來要開回來就把這段還原）
                             <label class="checkbox-label">
