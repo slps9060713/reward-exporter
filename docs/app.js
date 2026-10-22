@@ -51,7 +51,7 @@ let customSounds = {};
 let spinLoopAudio = null;
 let testSolidId = 37465049;
 let testWinningCount = 0;
-let isDebugMode = true;
+let isDebugMode = false;
 
 // ---------- DOM 元素快取 ----------
 const loginPage = document.getElementById('loginPage');
@@ -2403,10 +2403,24 @@ function startPieLottery(tabId, items, winnerNumber) {
 
     const n = items.length;
     const angle = 360 / n;
-    // 落點偏向扇形兩側邊界（製造開獎懸念），但保留安全間距、不緊貼分界線
-    const edgeGapMin = angle * 0.01; // 距分界線至少 1%（極貼線、最大懸念）
-    const edgeGapMax = angle * 0.07; // 最多距分界線 7%
-    const offsetFromEdge = edgeGapMin + Math.random() * Math.max(edgeGapMax - edgeGapMin, 0.001);
+    // 落點：先擲一次決定偏移類型（offsetFromEdge = 距最近分界線的距離，以扇形寬度比例計）
+    //   30% 正常：整個扇形內均勻分布
+    //   40% 中等：距分界線 1%～30%
+    //   30% 貼線：距分界線 1%～7%（極貼線、最大懸念）
+    // 三種都保留至少 1% 的安全間距、不緊貼分界線
+    const edgeGapMin = angle * 0.01; // 距分界線至少 1%
+    const edgeGapMid = angle * 0.3;  // 中等時最多距分界線 30%
+    const edgeGapMax = angle * 0.07; // 貼線時最多距分界線 7%
+    const offsetRoll = Math.random();
+    let offsetFromEdge;
+    if (offsetRoll < 0.3) {
+        // 距最近分界線在 1%～50% 間均勻，再隨機選邊 → 等同整個扇形均勻
+        offsetFromEdge = edgeGapMin + Math.random() * (angle * 0.5 - edgeGapMin);
+    } else if (offsetRoll < 0.7) {
+        offsetFromEdge = edgeGapMin + Math.random() * (edgeGapMid - edgeGapMin);
+    } else {
+        offsetFromEdge = edgeGapMin + Math.random() * Math.max(edgeGapMax - edgeGapMin, 0.001);
+    }
     const nearStartEdge = Math.random() < 0.5; // 隨機靠左邊界或右邊界
     const withinSegment = nearStartEdge ? offsetFromEdge : (angle - offsetFromEdge);
     const stopFromTop = winnerIndex * angle + withinSegment;
