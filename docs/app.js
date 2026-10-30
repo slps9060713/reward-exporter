@@ -27,6 +27,7 @@ let extremeBattling = false; // 對戰進行中
 const EXTREME_MAX_PLAYERS = 5;   // 極致模式人數上限（顏色辨識與畫面密度的限制）
                                  // 上限受 BattleArena.COLORS 的色數約束，不可超過它
 const EXTREME_MIN_PLAYERS = 2;
+let tournamentMode = false; // 極致錦標賽（遴選 → 開賽，只有冠軍算中獎）
 let wheelSpinSeconds = null; // 輪盤旋轉基礎秒數；null = 空白或不合規，使用預設值
 const DEFAULT_WHEEL_SPIN_SECONDS = 5; // 預設基礎秒數（實際總時長再加 0~2 秒隨機）
 const WHEEL_SPIN_SECONDS_MIN = 1;
@@ -303,8 +304,9 @@ function handleStartGuest() {
     
     // 顯示主內容（包含全局選項）
     showMainContent();
-    
+
     createCustomTab();
+    showTournamentIntroOnFirstVisit();
 }
 
 
@@ -350,8 +352,9 @@ function showMainPage() {
     if (currentToken) {
         winnersSidebar.style.display = 'flex';
     }
-    
+
     loadRewards();
+    showTournamentIntroOnFirstVisit();
 }
 
 
@@ -1031,7 +1034,9 @@ async function loadRedemptionsForTab(tabId) {
             userId: r.user_id
         }));
         tabData.loaded = true;
-        
+
+        // 名單重建前清空遴選區
+        clearTournamentCandidates(tabId);
         // 重置此分頁的已中獎列表
         drawnWinners[tabId] = [];
         // 載入新名單：清除開獎暫留狀態，否則輪盤不會重繪（會顯示空圓）
@@ -1082,6 +1087,10 @@ async function loadRedemptionsForTab(tabId) {
                         <button class="btn-primary" id="startBtn-${tabData.id}" onclick="startLottery('${tabData.id}')" ${tabData.participants.length === 0 ? 'disabled' : ''}>
                             ${tabData.participants.length === 0 ? '無參與者' : '啟動抽獎'}
                         </button>
+                        <div class="tournament-actions" id="tournamentActions-${tabData.id}" style="display: none;">
+                            <button class="btn-primary" id="selectBtn-${tabData.id}" onclick="selectTournamentCandidate('${tabData.id}')">遴選</button>
+                            <button class="btn-primary" id="matchBtn-${tabData.id}" onclick="startTournamentMatch('${tabData.id}')" disabled>開賽</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1216,6 +1225,10 @@ function createTabElements(tabData, isActive = false) {
                         <button class="btn-primary" id="startBtn-${tabData.id}" onclick="startLottery('${tabData.id}')">
                             啟動抽獎
                         </button>
+                        <div class="tournament-actions" id="tournamentActions-${tabData.id}" style="display: none;">
+                            <button class="btn-primary" id="selectBtn-${tabData.id}" onclick="selectTournamentCandidate('${tabData.id}')">遴選</button>
+                            <button class="btn-primary" id="matchBtn-${tabData.id}" onclick="startTournamentMatch('${tabData.id}')" disabled>開賽</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1312,6 +1325,7 @@ function renderCustomList() {
     const idList = document.getElementById('id-list-custom');
     if (!idList) return;
 
+    clearTournamentCandidates('custom');   // 名單重建前清空遴選區，避免原始元素被插回造成重複
     const drawn = drawnWinners['custom'] || [];
     idList.innerHTML = '';
 
@@ -1350,7 +1364,17 @@ function importCustomLines(content, statusEl) {
         return 0;
     }
 
+    if (tournamentMatch) {   // 開賽中不允許改名單，等對戰結束再匯入
+        if (statusEl) {
+            statusEl.textContent = '開賽中，請等對戰結束再匯入';
+            statusEl.className = 'upload-status error';
+        }
+        return 0;
+    }
+
     const toAdd = lines.slice(0, remaining);
+    // 名單變動：遴選區的人先回到名單（必須在名單 DOM 變動之前）
+    clearTournamentCandidates('custom');
     const idList = document.getElementById('id-list-custom');
 
     toAdd.forEach(text => {
@@ -1400,6 +1424,11 @@ function addCustomTextEntry() {
         return;
     }
 
+    if (tournamentMatch) {   // 開賽中不允許改名單（輸入內容保留，對戰結束後再按一次）
+        alert('開賽中，請等對戰結束再新增');
+        return;
+    }
+    clearTournamentCandidates('custom');   // 名單變動：遴選區的人先回到名單
     customEntries.push({ id: nextId, text });
     const idList = document.getElementById('id-list-custom');
     if (idList) {
@@ -1466,6 +1495,10 @@ function handleCustomTxtImport(event) {
 
 // 刪除自定義模式單一項目（僅自定義模式）
 function removeCustomEntry(entryId) {
+    // 開賽中不允許改名單：候選人正在擂台上，刪掉可能連冠軍都刪掉
+    if (tournamentMatch) return;
+    // 名單變動：遴選區的人先回到名單，被刪的若是候選人也會在下面一併移除
+    clearTournamentCandidates('custom');
     customEntries = customEntries.filter(entry => entry.id !== entryId);
 
     if (drawnWinners['custom']) {
@@ -1547,6 +1580,15 @@ function loadGlobalLotteryOptions() {
     }
     // 極致模式：依輪盤模式是否勾選決定可否勾選
     refreshExtremeAvailability();
+    // 還原極致錦標賽（連續抽取與極致都開著才生效）
+    const savedTournament = localStorage.getItem('globalExtremeTournament');
+    if (savedTournament !== null) {
+        tournamentMode = savedTournament === 'true' && isTournamentAvailable();
+        localStorage.setItem('globalExtremeTournament', tournamentMode.toString());   // 前提不成立時一併校正成 false
+        const box = document.getElementById('globalExtremeTournament');
+        if (box) box.checked = tournamentMode;
+    }
+    refreshTournamentAvailability();
 
     // 尾數統計目前在介面上隱藏（index.html 中已註解掉選項），因此強制關閉，
     // 避免先前存在 localStorage 的開啟狀態殘留、卻沒有 UI 可以關掉。
@@ -1579,6 +1621,8 @@ function toggleGlobalContinuousMode(checked) {
     localStorage.setItem('globalContinuousMode', checked.toString());
     // 切換連續模式會改變可抽人數（進而可能改變數字／圓餅模式），清除暫留狀態讓輪盤重繪
     pieHoldResult = false;
+    // 錦標賽以連續抽取為前提：關掉時一併取消（候選人先回到名單，再處理下方的名單重置）
+    refreshTournamentAvailability();
 
     // 獲取當前活躍的分頁
     const activePanel = document.querySelector('.tab-panel.active');
@@ -1665,6 +1709,7 @@ function refreshExtremeAvailability() {
         if (box) box.checked = false;
         localStorage.setItem('globalWheelModeExtreme', 'false');   // 重新整理後也維持取消，與當下一致
         pieHoldResult = false;
+        refreshTournamentAvailability();   // 錦標賽以極致為前提，一併取消
         destroyExtremeStage();
         const activePanel = document.querySelector('.tab-panel.active');
         if (activePanel) updateWheelAreaUI(activePanel.id.replace('panel-', ''));
@@ -1680,6 +1725,7 @@ function toggleGlobalExtremeMode(checked) {
     extremeMode = checked;
     localStorage.setItem('globalWheelModeExtreme', checked.toString());
     pieHoldResult = false;
+    refreshTournamentAvailability();
     if (!checked) destroyExtremeStage();
     const activePanel = document.querySelector('.tab-panel.active');
     if (activePanel) updateWheelAreaUI(activePanel.id.replace('panel-', ''));
@@ -1707,10 +1753,20 @@ function moveStartButtonToArena(tabId, intoArena) {
 
 function destroyExtremeStage() {
     if (!extremeStage) return;
+    // 對戰中被拆掉（例如取消勾選極致）：destroy() 不會呼叫 onFinish，
+    // 先 abort 讓結果照樣寫入，否則 lotteryBusy 會永遠鎖住
+    if (extremeBattling) {
+        extremeStage.abort();
+    } else if (tournamentMatch && !tournamentMatch.done) {
+        finishTournament(tournamentMatch.tabId);
+    }
+    if (!extremeStage) return;          // 收尾過程中已經被拆掉
+    pieHoldResult = false;              // 擂台要拆了，沒有結果畫面可暫留
     if (extremeStageTabId) {
         const controls = document.querySelector(`#panel-${extremeStageTabId} .wheel-controls`);
         if (controls) controls.style.display = '';      // 先還原控制列，按鈕才看得到
         moveStartButtonToArena(extremeStageTabId, false);
+        moveTournamentActionsToArena(extremeStageTabId, false);
     }
     extremeStage.destroy();
     extremeStage = null;
@@ -1797,6 +1853,370 @@ function finishExtremeLottery(tabId, winnerNumber, res) {
     lotteryBusy = false;
     checkAndUpdateLotteryButton(tabId);
     moveStartButtonToArena(tabId, true);   // handleWinner 可能重繪，確保按鈕仍在擂台中央
+}
+
+// ==================== 極致錦標賽（遴選 → 開賽） ====================
+// 錦標賽以連續抽取與極致為前提（極致本身已要求輪盤模式）
+function isTournamentAvailable() {
+    return continuousMode && extremeMode;
+}
+
+// 依前提更新錦標賽選項的可勾選／泛灰；前提不成立時自動取消
+function refreshTournamentAvailability() {
+    const box = document.getElementById('globalExtremeTournament');
+    const label = document.getElementById('extremeTournamentLabel');
+    const available = isTournamentAvailable();
+
+    if (box) box.disabled = !available;
+    if (label) {
+        label.classList.toggle('checkbox-label-disabled', !available);
+        label.title = available ? '' : '需先勾選連續抽取與輪盤模式・極致';
+    }
+
+    if (!available && tournamentMode) {
+        tournamentMode = false;
+        if (box) box.checked = false;
+        localStorage.setItem('globalExtremeTournament', 'false');   // 重新整理後也維持取消，與當下一致
+        if (typeof clearAllTournamentCandidates === 'function') clearAllTournamentCandidates();
+        pieHoldResult = false;
+        const activePanel = document.querySelector('.tab-panel.active');
+        if (activePanel) updateWheelAreaUI(activePanel.id.replace('panel-', ''));
+    }
+}
+
+function toggleExtremeTournament(checked) {
+    const box = document.getElementById('globalExtremeTournament');
+    if (checked && !isTournamentAvailable()) {   // 保險：前提不成立不允許開啟
+        if (box) box.checked = false;
+        return;
+    }
+    tournamentMode = checked;
+    localStorage.setItem('globalExtremeTournament', checked.toString());
+    if (checked && localStorage.getItem('extremeTournamentIntroHidden') !== 'true') {
+        showTournamentIntro();
+    }
+    if (!checked && typeof clearAllTournamentCandidates === 'function') clearAllTournamentCandidates();
+    pieHoldResult = false;
+    const activePanel = document.querySelector('.tab-panel.active');
+    if (activePanel) updateWheelAreaUI(activePanel.id.replace('panel-', ''));
+}
+
+// 每次勾選時的規則說明；關閉時勾了「不再提醒」才記住（同一個瀏覽器）
+function showTournamentIntro() {
+    const overlay = document.getElementById('tournamentIntroOverlay');
+    const dontRemind = document.getElementById('tournamentIntroDontRemind');
+    if (dontRemind) dontRemind.checked = false;
+    if (overlay) overlay.style.display = 'flex';
+}
+
+// 第一次進入抽獎畫面（未登入或 Twitch 登入）強制跳一次，與「不再提醒」分開記
+function showTournamentIntroOnFirstVisit() {
+    if (localStorage.getItem('extremeTournamentIntroFirstShown') === 'true') return;
+    localStorage.setItem('extremeTournamentIntroFirstShown', 'true');
+    showTournamentIntro();
+}
+
+function closeTournamentIntro() {
+    const overlay = document.getElementById('tournamentIntroOverlay');
+    const dontRemind = document.getElementById('tournamentIntroDontRemind');
+    if (overlay) overlay.style.display = 'none';
+    if (dontRemind && dontRemind.checked) localStorage.setItem('extremeTournamentIntroHidden', 'true');
+}
+
+// 遴選區（候選人）：{ tabId: [{ id: '003', item: <從 id-list 暫時移出的原始元素> }, ...] }（依加入順序）
+// 中獎區只放淺灰複本；候選人不寫入 drawnWinners / winnersRecord，回獎池＝把原始元素依編號插回。
+let tournamentCandidates = {};
+
+function getTournamentCandidates(tabId) {
+    return (tournamentCandidates[tabId] || []).map(c => c.id);
+}
+
+// 這個分頁目前是否走「遴選 → 開賽」流程：遴選區有人，或可抽人數超過擂台上限
+function isTournamentFlow(tabId) {
+    if (!tournamentMode) return false;
+    if (getTournamentCandidates(tabId).length > 0) return true;
+    return getAvailableParticipants(tabId).length > EXTREME_MAX_PLAYERS;
+}
+
+function addTournamentCandidate(tabId, id) {
+    const idList = document.getElementById(`id-list-${tabId}`);
+    const winnersList = document.getElementById(`winners-list-${tabId}`);
+    const winnersSection = document.getElementById(`winners-section-${tabId}`);
+    if (!idList || !winnersList) return;
+    const item = idList.querySelector(`.id-item[data-id="${id}"]`);
+    if (!item) return;
+
+    const copy = item.cloneNode(true);
+    copy.classList.remove('winner', 'eliminated');
+    copy.classList.add('tournament-candidate');
+    // 自訂模式的「移除此項目」會把人從名單永久刪除，候選人複本不能保留它
+    copy.querySelectorAll('.remove-custom-btn').forEach(btn => btn.remove());
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'candidate-remove-btn';
+    removeBtn.type = 'button';
+    removeBtn.title = '放回名單';
+    removeBtn.textContent = '✕';
+    removeBtn.setAttribute('onclick', `removeTournamentCandidate('${tabId}','${id}')`);
+    copy.appendChild(removeBtn);
+
+    item.remove();
+    if (!tournamentCandidates[tabId]) tournamentCandidates[tabId] = [];
+    tournamentCandidates[tabId].push({ id, item });
+    winnersList.appendChild(copy);
+    if (winnersSection) winnersSection.style.display = 'block';
+    checkAndUpdateLotteryButton(tabId);
+}
+
+// 把一位候選人放回參與名單（依編號插回原位置），並移除淺灰複本
+function restoreCandidateToPool(tabId, entry) {
+    const idList = document.getElementById(`id-list-${tabId}`);
+    const winnersList = document.getElementById(`winners-list-${tabId}`);
+    const winnersSection = document.getElementById(`winners-section-${tabId}`);
+    if (idList) {
+        entry.item.classList.remove('winner', 'eliminated');
+        entry.item.style.display = '';
+        const next = Array.from(idList.querySelectorAll('.id-item')).find(el => el.dataset.id > entry.id);
+        if (next) idList.insertBefore(entry.item, next);
+        else idList.appendChild(entry.item);
+    }
+    if (winnersList) {
+        const copy = winnersList.querySelector(`.tournament-candidate[data-id="${entry.id}"]`);
+        if (copy) copy.remove();
+        if (winnersSection && !winnersList.querySelector('.id-item')) winnersSection.style.display = 'none';
+    }
+}
+
+function removeTournamentCandidate(tabId, id) {
+    if (lotteryBusy) return;
+    const list = tournamentCandidates[tabId] || [];
+    const index = list.findIndex(c => c.id === id);
+    if (index < 0) return;
+    const [entry] = list.splice(index, 1);
+    if (list.length === 0) delete tournamentCandidates[tabId];
+    restoreCandidateToPool(tabId, entry);
+    pieHoldResult = false;
+    checkAndUpdateLotteryButton(tabId);
+    updateWheelAreaUI(tabId);
+}
+
+// 清空單一分頁的遴選區（不重繪，由呼叫端負責）
+function clearTournamentCandidates(tabId) {
+    tournamentSelectToken++;   // 跳號中的遴選作廢
+    (tournamentCandidates[tabId] || []).forEach(entry => restoreCandidateToPool(tabId, entry));
+    delete tournamentCandidates[tabId];
+}
+
+function clearAllTournamentCandidates() {
+    tournamentSelectToken++;   // 遴選區還沒有人時也要讓跳號中的遴選作廢
+    Object.keys(tournamentCandidates).forEach(tabId => {
+        clearTournamentCandidates(tabId);
+        checkAndUpdateLotteryButton(tabId);
+    });
+    pieHoldResult = false;
+    const activePanel = document.querySelector('.tab-panel.active');
+    if (activePanel) {
+        const activeId = activePanel.id.replace('panel-', '');
+        checkAndUpdateLotteryButton(activeId);
+        updateWheelAreaUI(activeId);
+    }
+}
+
+// 錦標賽流程：「啟動抽獎」換成並排的「遴選」「開賽」
+function updateTournamentControls(tabId) {
+    const startBtn = document.getElementById(`startBtn-${tabId}`);
+    const actions = document.getElementById(`tournamentActions-${tabId}`);
+    const selectBtn = document.getElementById(`selectBtn-${tabId}`);
+    const matchBtn = document.getElementById(`matchBtn-${tabId}`);
+    if (!actions) return;
+
+    if (isTournamentFlow(tabId)) {
+        if (startBtn && startBtn.style.display !== 'none') {
+            startBtn.style.display = 'none';
+            startBtn.dataset.tournamentHidden = 'true';
+        }
+        actions.style.display = '';
+    } else {
+        // 只還原自己藏起來的按鈕（縮圈流程也會藏「啟動抽獎」，不能誤開）
+        if (startBtn && startBtn.dataset.tournamentHidden) {
+            startBtn.style.display = '';
+            delete startBtn.dataset.tournamentHidden;
+        }
+        actions.style.display = 'none';
+    }
+
+    const count = getTournamentCandidates(tabId).length;
+    if (selectBtn) {
+        selectBtn.disabled = lotteryBusy || count >= EXTREME_MAX_PLAYERS ||
+            getAvailableParticipants(tabId).length === 0;
+    }
+    if (matchBtn) matchBtn.disabled = lotteryBusy || count < EXTREME_MIN_PLAYERS;
+}
+
+// 遴選：數字跳號（沿用啟動抽獎的 50 × 50ms 節奏）後直接揭曉，沒有縮圈。
+// 被選中的人只進遴選區（淺灰），不寫入 drawnWinners / 右側中獎紀錄。
+let tournamentSelectToken = 0;   // 跳號期間遴選區被清空時遞增，讓這次遴選作廢
+
+function selectTournamentCandidate(tabId) {
+    if (lotteryBusy || !isTournamentFlow(tabId)) return;
+    if (getTournamentCandidates(tabId).length >= EXTREME_MAX_PLAYERS) return;
+    const items = getAvailableParticipants(tabId);
+    if (items.length === 0) return;
+
+    // 從擂台結果暫留回到數字輪盤
+    pieHoldResult = false;
+    updateWheelAreaUI(tabId);
+
+    // ① 先決定人選
+    const pick = items[Math.floor(Math.random() * items.length)];
+    const pickId = pick.dataset.id;
+    const token = ++tournamentSelectToken;
+
+    // ② 演出：數字跳號
+    lotteryBusy = true;
+    checkAndUpdateLotteryButton(tabId);
+    const wheel = document.getElementById(`wheel-${tabId}`);
+    const wheelNumber = wheel ? wheel.querySelector('.wheel-number') : null;
+    const wheelInfo = document.querySelector(`#panel-${tabId} .wheel-info`);
+    if (wheel) wheel.classList.add('spinning');
+    if (wheelInfo) wheelInfo.textContent = '遴選中...';
+    playSound('spin');
+    startSpinLoop();
+
+    let count = 0;
+    const spinInterval = setInterval(() => {
+        if (wheelNumber) wheelNumber.textContent = items[Math.floor(Math.random() * items.length)].dataset.id;
+        count++;
+        if (count <= 50) return;
+
+        clearInterval(spinInterval);
+        stopSpinLoop();
+        if (wheel) wheel.classList.remove('spinning');
+        playSound('stop');
+        lotteryBusy = false;
+
+        // 跳號期間遴選區被清空（切分頁、取消勾選、名單變動）：這次遴選作廢
+        if (token !== tournamentSelectToken) {
+            checkAndUpdateLotteryButton(tabId);
+            // 若是切到別的分頁：那邊的按鈕是在鎖住時更新的，解鎖後要再更新一次
+            const activePanel = document.querySelector('.tab-panel.active');
+            const activeId = activePanel ? activePanel.id.replace('panel-', '') : null;
+            if (activeId && activeId !== tabId) {
+                checkAndUpdateLotteryButton(activeId);
+                updateWheelAreaUI(activeId);
+            }
+            return;
+        }
+
+        // ③ 收尾：放進遴選區
+        if (wheelNumber) wheelNumber.textContent = pickId;
+        addTournamentCandidate(tabId, pickId);
+        updateWheelAreaUI(tabId);
+        // addTournamentCandidate 內的 checkAndUpdateLotteryButton 會覆寫 wheel-info，所以最後才寫
+        if (wheelInfo) wheelInfo.textContent = `遴選：${getParticipantLabel(pick)}`;
+    }, 50);
+}
+
+// 開賽：遴選區的 2～5 人上擂台，冠軍才算正式中獎，其他人回到名單
+let tournamentMatch = null;   // { tabId, championId, done }
+
+// 把「遴選／開賽」搬進擂台中央 / 搬回原本的控制列（比照 moveStartButtonToArena）
+function moveTournamentActionsToArena(tabId, intoArena) {
+    const actions = document.getElementById(`tournamentActions-${tabId}`);
+    const controls = document.querySelector(`#panel-${tabId} .wheel-controls`);
+    if (!actions || !controls) return;
+    if (intoArena && extremeStage && extremeStage.overlay) {
+        if (actions.parentNode !== extremeStage.overlay) {
+            extremeStage.overlay.insertBefore(actions, extremeStage.resultEl);
+        }
+    } else if (!intoArena && actions.parentNode !== controls) {
+        controls.appendChild(actions);
+    }
+}
+
+function startTournamentMatch(tabId) {
+    if (lotteryBusy) return;
+    const entries = (tournamentCandidates[tabId] || []).slice();
+    if (entries.length < EXTREME_MIN_PLAYERS) return;
+
+    // ① 先決定冠軍：候選人之間均勻隨機
+    const championId = entries[Math.floor(Math.random() * entries.length)].id;
+    tournamentMatch = { tabId, championId, done: false };
+
+    pieHoldResult = false;
+    lotteryBusy = true;
+    updateTournamentControls(tabId);
+
+    // ② 演出：擂台取代數字輪盤，遴選／開賽搬進擂台中央（開賽中為 disabled）
+    const digitArea = document.getElementById(`digit-wheel-area-${tabId}`);
+    const pieArea = document.getElementById(`pie-wheel-area-${tabId}`);
+    const extremeArea = document.getElementById(`extreme-arena-area-${tabId}`);
+    const controls = document.querySelector(`#panel-${tabId} .wheel-controls`);
+    if (digitArea) digitArea.style.display = 'none';
+    if (pieArea) pieArea.style.display = 'none';
+    if (extremeArea) extremeArea.style.display = '';
+
+    // 候選人的原始元素已移出名單，ensureExtremeStage 只讀 dataset.id 與名稱
+    const items = entries.map(c => c.item);
+    const stage = ensureExtremeStage(tabId, items);
+    const info = stage ? stage.run({ winnerId: championId, onFinish: () => finishTournament(tabId) }) : null;
+
+    if (!info) {
+        // 擂台掛不起來或找不到種子（極罕見）：全部回名單，改用圓餅以同一位冠軍收尾
+        console.warn('極致錦標賽無法開賽，退回圓餅開獎');
+        tournamentMatch = null;
+        clearTournamentCandidates(tabId);
+        destroyExtremeStage();
+        if (extremeArea) extremeArea.style.display = 'none';
+        if (pieArea) pieArea.style.display = '';
+        if (controls) controls.style.display = '';
+        updateTournamentControls(tabId);
+        const pool = getAvailableParticipants(tabId);
+        startPieLottery(tabId, pool, championId);
+        return;
+    }
+
+    moveStartButtonToArena(tabId, false);      // 「啟動抽獎」留在（隱藏的）控制列
+    moveTournamentActionsToArena(tabId, true);
+    if (controls) controls.style.display = 'none';
+    extremeBattling = true;
+    pieSpinning = true;                        // 沿用「動畫進行中」鎖，避免畫面被重繪
+}
+
+// 開賽結束（或被跳過／中止）後的收尾；只執行一次
+function finishTournament(tabId) {
+    if (!tournamentMatch || tournamentMatch.done) return;
+    tournamentMatch.done = true;
+    const championId = tournamentMatch.championId;
+    extremeBattling = false;
+    pieSpinning = false;
+
+    // ③ 記帳：候選人（含冠軍）先全部回名單，再以一般中獎流程寫入冠軍
+    clearTournamentCandidates(tabId);
+    const idList = document.getElementById(`id-list-${tabId}`);
+    const championItem = idList ? idList.querySelector(`[data-id="${championId}"]`) : null;
+    if (championItem) championItem.classList.add('winner');
+    pieHoldResult = true;                      // 保留擂台結果，直到下次按遴選／啟動抽獎
+    handleWinner(tabId, championId);
+    lotteryBusy = false;
+    checkAndUpdateLotteryButton(tabId);        // 內含 updateTournamentControls
+
+    // 擂台中央的按鈕：仍是錦標賽流程 → 遴選／開賽；仍在極致模式 → 啟動抽獎（2～5 人走一般極致）；
+    // 開賽中途取消了極致 → 不暫留，直接回到一般輪盤（控制列才看得到）
+    const startBtn = document.getElementById(`startBtn-${tabId}`);
+    tournamentMatch = null;
+    if (isTournamentFlow(tabId)) {
+        moveTournamentActionsToArena(tabId, true);
+    } else if (extremeMode) {
+        moveTournamentActionsToArena(tabId, false);
+        if (startBtn) {
+            startBtn.style.display = '';
+            delete startBtn.dataset.tournamentHidden;
+        }
+        moveStartButtonToArena(tabId, true);
+    } else {
+        pieHoldResult = false;
+        updateWheelAreaUI(tabId);
+    }
 }
 
 // ==================== 輪盤模式選項 ====================
@@ -2031,6 +2451,8 @@ async function reloadRedemptionsForTab(tabId) {
         reloadBtn.disabled = true;
     }
     
+    // 名單重建前清空遴選區
+    clearTournamentCandidates(tabId);
     // 重置已中獎列表
     drawnWinners[tabId] = [];
     // 重新載入名單：清除開獎暫留狀態，否則輪盤不會重繪（會顯示空圓）
@@ -2128,6 +2550,10 @@ function switchTab(tabId) {
 
     // 對戰進行中被切走：中止動畫，但結果照樣寫入（勝者在動畫開始前就已決定）
     if (extremeBattling && extremeStage) extremeStage.abort();
+    // abort() 在開場倒數中不會呼叫 onFinish：開賽的收尾在這裡補上，冠軍照樣寫入
+    if (tournamentMatch && !tournamentMatch.done) finishTournament(tournamentMatch.tabId);
+    // 切換分頁：所有分頁的遴選區都回到名單
+    clearAllTournamentCandidates();
     // 切換分頁：清除暫留狀態，否則新分頁的輪盤不會重繪
     pieHoldResult = false;
     if (extremeStageTabId && extremeStageTabId !== tabId) destroyExtremeStage();
@@ -2150,6 +2576,9 @@ function getAvailableParticipants(tabId) {
         const drawn = drawnWinners[tabId] || [];
         items = items.filter(item => !drawn.includes(item.dataset.id));
     }
+    // 保險：遴選區的人原本就已移出名單，這裡再排除一次
+    const candidates = getTournamentCandidates(tabId);
+    if (candidates.length) items = items.filter(item => !candidates.includes(item.dataset.id));
     return items;
 }
 
@@ -2207,6 +2636,26 @@ function updateWheelAreaUI(tabId) {
     const useExtreme = shouldUseExtremeMode(items.length);
 
     const controls = document.querySelector(`#panel-${tabId} .wheel-controls`);
+
+    // 錦標賽流程（遴選區有人或人數超過擂台上限）：一律停在數字輪盤，控制列換成遴選／開賽
+    if (isTournamentFlow(tabId)) {
+        digitArea.style.display = '';
+        pieArea.style.display = 'none';
+        if (extremeArea) extremeArea.style.display = 'none';
+        if (extremeStage) destroyExtremeStage();
+        if (controls) controls.style.display = '';
+        const tournamentInfo = document.querySelector(`#panel-${tabId} .wheel-info`);
+        if (tournamentInfo) tournamentInfo.style.display = '';
+        const pieWheel = document.getElementById(`pie-wheel-${tabId}`);
+        if (pieWheel) {
+            pieWheel.style.transition = 'none';
+            pieWheel.style.transform = 'rotate(0deg)';
+            pieWheel.innerHTML = '';
+        }
+        updateTournamentControls(tabId);
+        return;
+    }
+    updateTournamentControls(tabId);
 
     // 極致模式：擂台留空待機，按鈕移到擂台中央，下方名牌先就位
     if (useExtreme) {
@@ -2504,6 +2953,8 @@ function startLottery(tabId) {
     if (lotteryBusy) {
         return;
     }
+    // 錦標賽流程改用遴選／開賽，「啟動抽獎」不應被觸發
+    if (isTournamentFlow(tabId)) return;
 
     const idList = document.getElementById(`id-list-${tabId}`);
     const winnersList = document.getElementById(`winners-list-${tabId}`);
@@ -2952,8 +3403,10 @@ function checkAndUpdateLotteryButton(tabId) {
     if (lotteryBusy) {
         startBtn.disabled = true;
         startBtn.textContent = '抽獎中...';
+        updateTournamentControls(tabId);
         return;
     }
+    updateTournamentControls(tabId);
 
     const allItems = Array.from(idList.querySelectorAll('.id-item'));
     

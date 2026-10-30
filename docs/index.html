@@ -167,10 +167,9 @@
                                 <input type="checkbox" id="globalWheelModeExtreme" disabled onchange="toggleGlobalExtremeMode(this.checked)">
                                 <span>輪盤模式・極致（上限五人）</span>
                             </label>
-                            <!-- 極致錦標賽：開發中，尚無功能，僅佔位顯示（永遠 disabled） -->
-                            <label class="checkbox-label checkbox-label-disabled" id="extremeTournamentLabel" title="開發中">
-                                <input type="checkbox" id="globalExtremeTournament" disabled>
-                                <span>極致錦標賽(開發中)</span>
+                            <label class="checkbox-label checkbox-label-disabled" id="extremeTournamentLabel" title="需先勾選連續抽取與輪盤模式・極致">
+                                <input type="checkbox" id="globalExtremeTournament" disabled onchange="toggleExtremeTournament(this.checked)">
+                                <span>極致錦標賽</span>
                             </label>
                             <!-- 尾數統計：暫時隱藏（功能與相關函式保留，未來要開回來就把這段還原）
                             <label class="checkbox-label">
@@ -386,6 +385,28 @@
             <div class="overlay-buttons">
                 <button id="confirmBulkImportBtn" class="btn-primary" type="button">大量匯入</button>
                 <button id="cancelBulkImportBtn" class="btn-secondary" type="button">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 極致錦標賽：第一次進入抽獎畫面強制跳一次；之後每次勾選時跳出（勾「不再提醒」後不再跳出） -->
+    <div id="tournamentIntroOverlay" class="overlay" style="display: none;" onclick="if (event.target === this) closeTournamentIntro()">
+        <div class="overlay-content tournament-intro-panel">
+            <h2>🏆 極致錦標賽</h2>
+            <img id="tournamentIntroImage" class="tournament-intro-image" src="tournament-intro.png" alt="遴選畫面與擂台示意">
+            <ol class="tournament-intro-rules">
+                <li>連續抽取模式開啟時並且名單超過 5 人時，按「遴選」從名單中抽出候選人（淺灰色，跳過縮圈），最多 5 位。</li>
+                <li>候選人有 2 位以上就能按「開賽」，讓他們上擂台對戰。</li>
+                <li>只有冠軍算中獎；其他候選人回到名單，之後還有機會。中獎冠軍會留在那邊，後續仍然可以追加遴選，已中獎冠軍不會再次被算在後續對戰名單中。</li>
+                <li>點候選人旁的 ✕，可以把他放回名單。</li>
+                <li class="tournament-intro-tip">建議在抽選人數多，並且需要製造懸念的大獎環節使用</li>
+            </ol>
+            <label class="checkbox-label tournament-intro-dont-remind">
+                <input type="checkbox" id="tournamentIntroDontRemind">
+                <span>不再提醒</span>
+            </label>
+            <div class="overlay-buttons">
+                <button id="closeTournamentIntroBtn" class="btn-primary" type="button" onclick="closeTournamentIntro()">我知道了</button>
             </div>
         </div>
     </div>
