@@ -671,6 +671,15 @@ tbody tr:hover {
     margin-top: 2rem;
 }
 
+.footer-image {
+    display: block;
+    width: 100%;
+    max-width: 480px;
+    height: auto;
+    margin: 0 auto;
+    border-radius: 8px;
+}
+
 /* 分頁樣式 */
 .tabs {
     display: flex;
