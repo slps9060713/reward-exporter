@@ -110,7 +110,17 @@
                                 // （改成 2400 會變成每 0.8 秒一聲，比較急促）
         celebrateMs: 2600,      // 勝利演出
         sound: true,            // 是否播放內建音效
-        volume: 0.35
+        volume: 0.35,
+
+        // --- 最後一擊鏡頭（純演出：只改播放速度與鏡頭，不影響模擬與結果）---
+        finisherCam: true,      // 決勝的那一擊放大＋慢動作。自然轉停（沒被撞）不演
+        camChance: 0.5,         // 符合條件的場次中，有多少比例會演出（由種子決定，同一場重播結果相同）
+        camSlow: 0.4,           // 慢動作倍率（0.4 = 四成速）
+        camZoom: 1.8,           // 放大倍率，鏡頭對準被淘汰的陀螺
+        camPreSec: 0.3,         // 最後一擊前多久進入慢動作（模擬秒）
+        camImpactSec: 0.15,     // 撞擊後慢動作再延續多久，之後以正常速度播到出局（模擬秒）
+        camPostSec: 0.3,        // 出局後鏡頭再停留多久才拉回全景（模擬秒）
+        camRampSec: 0.2         // 進出慢動作／放大的過渡時間（模擬秒）
     };
 
     // 顏色（沿用 app.js 的調色盤色相，但不加暗色遮罩，讓對撞更醒目）
@@ -476,6 +486,48 @@
         return fallback;   // 可能為 null → 呼叫端需自行退場
     }
 
+    /**
+     * 找出決勝的「最後一擊」。只讀模擬結果，不重跑、不影響勝負。
+     * - 擊飛：被淘汰者飛出前的最後一次碰撞（隔太久就從飛出前 camPreSec 開始）
+     * - 撞擊後轉停：同一格有碰撞
+     * - 自然轉停（沒被撞）：回傳 null，不演
+     */
+    function findFinisher(run, o) {
+        if (!run.deaths.length) return null;
+        const d = run.deaths[run.deaths.length - 1];
+        const hits = run.events.filter(e => e.type === 'clash' &&
+            (e.i === d.index || e.j === d.index) && e.frame <= d.frame);
+        let blow;
+        if (d.type === 'ringout') {
+            blow = hits.length ? hits[hits.length - 1].frame : d.frame;
+            if (d.frame - blow > 1.5 * o.fps) blow = d.frame;
+        } else {
+            const h = hits.find(e => e.frame === d.frame);
+            if (!h) return null;
+            blow = h.frame;
+        }
+        const start = Math.max(0, blow - o.camPreSec * o.fps);
+        return {
+            index: d.index, type: d.type, blowFrame: blow, deathFrame: d.frame,
+            // 慢動作只包住撞擊前後；放大則一路跟到出局之後
+            slow: { start: start, end: Math.min(d.frame, blow + o.camImpactSec * o.fps) },
+            zoom: { start: start, end: d.frame + o.camPostSec * o.fps }
+        };
+    }
+
+    // 區間強度 0~1（模擬格數 f 的函式）：過渡段用 smoothstep，區間內為 1
+    function windowAmount(w, o, f) {
+        if (!w) return 0;
+        const ramp = Math.max(1e-6, o.camRampSec * o.fps);
+        let a;
+        if (f < w.start - ramp || f > w.end + ramp) return 0;
+        if (f < w.start) a = (f - (w.start - ramp)) / ramp;
+        else if (f > w.end) a = 1 - (f - w.end) / ramp;
+        else a = 1;
+        a = Math.max(0, Math.min(1, a));
+        return a * a * (3 - 2 * a);
+    }
+
     function now() {
         return (typeof performance !== 'undefined' && performance.now)
             ? performance.now() : Date.now();
@@ -707,12 +759,27 @@
                 const targetIndex = entries.findIndex(e => String(e.id) === String(runCfg.winnerId));
                 if (targetIndex < 0) return null;
 
-                const seedBase = (runCfg.seed != null) ? (runCfg.seed >>> 0)
-                    : ((now() * 1000) >>> 0) ^ 0x9e3779b9;
-                const found = findSeed(n, targetIndex, o, seedBase);
+                let found;
+                if (runCfg.exactSeed != null) {
+                    // 重播指定的那一場（不搜尋），比對演出用
+                    found = { seed: runCfg.exactSeed >>> 0, tried: 0, exact: true, quick: false };
+                } else {
+                    const seedBase = (runCfg.seed != null) ? (runCfg.seed >>> 0)
+                        : ((now() * 1000) >>> 0) ^ 0x9e3779b9;
+                    found = findSeed(n, targetIndex, o, seedBase);
+                }
                 if (!found) return null;
                 const run = simulate(n, o, found.seed, true);
                 if (!run.ok || run.winnerIndex !== targetIndex) return null;
+                if (found.clashes == null) found.clashes = run.clashes;
+
+                // 最後一擊鏡頭：只決定「怎麼播」，模擬結果已經定了。
+                // 演不演由種子決定（獨立的亂數流，不影響模擬），同一場重播時一致
+                const camRoll = mulberry32(found.seed ^ 0x2f6b3c1d)();
+                const fin = (o.finisherCam && camRoll < o.camChance) ? findFinisher(run, o) : null;
+                const finEndMs = fin ? (Math.max(fin.slow.end, fin.zoom.end) + o.camRampSec * o.fps) / o.fps * 1000 : 0;
+                const speedAt = (simMs) => fin
+                    ? 1 - (1 - o.camSlow) * windowAmount(fin.slow, o, simMs / 1000 * o.fps) : 1;
 
                 const sound = createSound(o);
                 const onFinish = runCfg.onFinish || noop;
@@ -722,6 +789,8 @@
                 let shake = 0, nextEvent = 0, celebrated = false, done = false;
                 let lastCountdownStep = -1;   // 已經響過的倒數格（3 = 起跑那一聲）
                 const t0 = now();
+                // 播放時鐘：倒數結束後，模擬時間依當下速度累加（慢動作時走得慢）
+                let simMs = 0, lastT = null, celebrateT0 = null;
 
                 state = 'battle';
                 setBlur(false);
@@ -765,15 +834,44 @@
                 current = { finish: finish };
                 skipBtn.onclick = () => finish(true);
 
+                const lerpPos = (fp, i, k) => {
+                    const a = Math.floor(fp), t = fp - a;
+                    return frameAt(a, i, k) + (frameAt(a + 1, i, k) - frameAt(a, i, k)) * t;
+                };
+
                 function loop() {
-                    const elapsed = now() - t0;
-                    const battleMs = elapsed - o.countdownMs;
+                    const tNow = now();
+                    const elapsed = tNow - t0;
+                    let battleMs, rate = 1;
+                    if (elapsed < o.countdownMs) {
+                        battleMs = elapsed - o.countdownMs;
+                    } else {
+                        const realDt = (lastT == null) ? (elapsed - o.countdownMs) : (tNow - lastT);
+                        lastT = tNow;
+                        rate = speedAt(simMs);
+                        simMs += realDt * rate;
+                        battleMs = simMs;
+                    }
 
                     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
                     ctx.clearRect(0, 0, size, size);
                     if (shake > 0.2) {
                         ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-                        shake *= 0.86;
+                        shake *= Math.pow(0.86, rate);
+                    }
+                    // 鏡頭：放大並把焦點（被淘汰的陀螺）拉向畫面中央
+                    if (battleMs >= 0 && fin) {
+                        const fp = battleMs / 1000 * o.fps;
+                        const amt = windowAmount(fin.zoom, o, fp);
+                        if (amt > 0) {
+                            let fx = lerpPos(fp, fin.index, 0), fy = lerpPos(fp, fin.index, 1);
+                            const fd = Math.hypot(fx, fy);
+                            if (fd > o.arenaR) { fx *= o.arenaR / fd; fy *= o.arenaR / fd; }
+                            const s = 1 + (o.camZoom - 1) * amt;
+                            ctx.translate(cx, cy);
+                            ctx.scale(s, s);
+                            ctx.translate(-(cx + fx * scale * amt), -(cy + fy * scale * amt));
+                        }
                     }
                     drawArena(ctx, cx, cy, R, battleMs < 0);
 
@@ -825,25 +923,27 @@
                         const x = frameAt(i0, i, 0) + (frameAt(i0 + 1, i, 0) - frameAt(i0, i, 0)) * frac;
                         const y = frameAt(i0, i, 1) + (frameAt(i0 + 1, i, 1) - frameAt(i0, i, 1)) * frac;
                         const spin = frameAt(i0, i, 2);
-                        angles[i] += (0.12 + spin * 0.75);
+                        angles[i] += (0.12 + spin * 0.75) * rate;
                         const d = run.deaths.find(z => z.index === i);
                         drawTop(ctx, cx + x * scale, cy + y * scale, o.topR * scale,
                             entries[i].color, spin, angles[i], st,
                             d ? (fpos - d.frame) / o.fps : 0, battleMs / 1000);
                     }
-                    updateSparks(ctx, sparks);
+                    updateSparks(ctx, sparks, rate);
 
-                    if (battleMs >= run.durationMs) {
+                    // 勝利演出等鏡頭回到正常才開始，計時用真實時間（不受慢動作拉長）
+                    if (battleMs >= run.durationMs && (!fin || battleMs >= finEndMs)) {
+                        if (celebrateT0 == null) celebrateT0 = tNow;
                         const wi = run.winnerIndex;
                         drawWinnerRing(ctx, cx + frameAt(i0, wi, 0) * scale,
                             cy + frameAt(i0, wi, 1) * scale, o.topR * scale,
-                            entries[wi].color, (battleMs - run.durationMs) / 1000);
+                            entries[wi].color, (tNow - celebrateT0) / 1000);
                         if (!celebrated) {
                             celebrated = true;
                             sound.win();
                             onEvent({ type: 'win', index: wi });
                         }
-                        if (battleMs - run.durationMs > o.celebrateMs) { finish(false); return; }
+                        if (tNow - celebrateT0 > o.celebrateMs) { finish(false); return; }
                     }
                     raf = global.requestAnimationFrame(loop);
                 }
@@ -851,7 +951,20 @@
                 raf = global.requestAnimationFrame(loop);
                 return {
                     seed: found.seed, tried: found.tried, durationMs: run.durationMs,
-                    exact: found.exact, quick: found.quick, clashes: found.clashes
+                    exact: found.exact, quick: found.quick, clashes: found.clashes,
+                    finisher: fin ? {
+                        type: fin.type, index: fin.index,
+                        // 多出來的播放時間（毫秒）：慢動作逐格積分 (1/速度 − 1)，
+                        // 加上勝利演出延到鏡頭回正之後才開始的那一段
+                        extraMs: (() => {
+                            let ms = Math.max(0, finEndMs - run.durationMs);
+                            const ramp = o.camRampSec * o.fps;
+                            for (let f = Math.floor(fin.slow.start - ramp); f <= Math.ceil(fin.slow.end + ramp); f++) {
+                                ms += (1 / (1 - (1 - o.camSlow) * windowAmount(fin.slow, o, f)) - 1) * 1000 / o.fps;
+                            }
+                            return Math.round(ms);
+                        })()
+                    } : null
                 };
             },
 
@@ -878,7 +991,8 @@
             (cfg.onFinish || noop)({ winnerId: cfg.winnerId, aborted: true, reason: 'invalid-input' });
             return null;
         }
-        const info = stage.run({ winnerId: cfg.winnerId, seed: cfg.seed, onFinish: cfg.onFinish, onEvent: cfg.onEvent });
+        const info = stage.run({ winnerId: cfg.winnerId, seed: cfg.seed, exactSeed: cfg.exactSeed,
+            onFinish: cfg.onFinish, onEvent: cfg.onEvent });
         if (!info) {
             (cfg.onFinish || noop)({ winnerId: cfg.winnerId, aborted: true, reason: 'no-seed' });
             return null;
@@ -1007,12 +1121,14 @@
         }
     }
 
-    function updateSparks(ctx, list) {
+    function updateSparks(ctx, list, rate) {
+        const r = rate == null ? 1 : rate;   // 慢動作時火花也放慢
+        const damp = Math.pow(0.94, r);
         for (let k = list.length - 1; k >= 0; k--) {
             const p = list[k];
-            p.x += p.vx * 0.016; p.y += p.vy * 0.016;
-            p.vx *= 0.94; p.vy *= 0.94;
-            p.life -= 0.045;
+            p.x += p.vx * 0.016 * r; p.y += p.vy * 0.016 * r;
+            p.vx *= damp; p.vy *= damp;
+            p.life -= 0.045 * r;
             if (p.life <= 0) { list.splice(k, 1); continue; }
             ctx.globalAlpha = Math.max(0, p.life);
             ctx.beginPath();
@@ -1029,6 +1145,7 @@
         start: start,
         simulate: simulate,
         findSeed: findSeed,
+        findFinisher: findFinisher,
         DEFAULTS: DEFAULTS,
         COLORS: COLORS
     };

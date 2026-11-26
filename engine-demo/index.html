@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>戰鬥陀螺引擎 DEMO</title>
+<style>
+    :root{--bg:#0E0E10;--card:#18181B;--border:#2D2D35;--text:#EFEFF1;--sub:#ADADB8;--primary:#9146FF;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,'Segoe UI','Roboto','Helvetica','Arial',sans-serif;padding:1.5rem;}
+    h1{font-size:1.25rem;margin-bottom:.25rem;}
+    .hint{color:var(--sub);font-size:.85rem;margin-bottom:1.25rem;}
+    .layout{display:grid;grid-template-columns:420px 1fr;gap:1.5rem;align-items:start;}
+    .panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem;}
+    .panel h2{font-size:.95rem;color:var(--primary);margin-bottom:.75rem;}
+    .stage{min-height:520px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1rem;}
+    .row{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;}
+    .row label{flex:0 0 130px;font-size:.8rem;color:var(--sub);}
+    .row input[type=text],.row input[type=number],.row select{flex:1;background:var(--bg);border:1px solid var(--border);
+        border-radius:5px;color:var(--text);padding:.35rem .5rem;font-size:.85rem;}
+    .row input[type=range]{flex:1;accent-color:var(--primary);}
+    .row .val{flex:0 0 62px;text-align:right;font-size:.78rem;color:var(--text);font-variant-numeric:tabular-nums;}
+    button{background:var(--primary);border:none;color:#fff;padding:.55rem 1rem;border-radius:6px;
+        cursor:pointer;font-size:.9rem;font-weight:600;}
+    button.sec{background:#2D2D35;}
+    button:disabled{opacity:.5;cursor:not-allowed;}
+    .btns{display:flex;gap:.5rem;margin:.75rem 0;flex-wrap:wrap;}
+    pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.6rem;
+        font-size:.75rem;color:var(--sub);white-space:pre-wrap;line-height:1.6;max-height:280px;overflow:auto;}
+    fieldset{border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-bottom:.85rem;}
+    legend{font-size:.78rem;color:var(--primary);padding:0 .35rem;}
+</style>
+</head>
+<body>
+<h1>戰鬥陀螺引擎 DEMO</h1>
+<p class="hint">拉桿即時生效，預設值定義在 <code>battle-arena.js</code> 的 <code>DEFAULTS</code>。<br>
+「跑 300 局統計」不畫面、純算數字，可以快速確認時長分布與擊飛比例。</p>
+
+<div class="layout">
+    <div>
+        <div class="panel">
+            <h2>對戰設定</h2>
+            <div class="row"><label>人數</label>
+                <select id="count"><option value="2">2 人</option><option value="3" selected>3 人</option><option value="4">4 人</option><option value="5">5 人</option></select>
+            </div>
+            <div class="row"><label>ID 1</label><input type="text" id="id0" value="FATRAT9924"></div>
+            <div class="row"><label>ID 2</label><input type="text" id="id1" value="滿滿DD最女的置夜行"></div>
+            <div class="row"><label>ID 3</label><input type="text" id="id2" value="beb_10110"></div>
+            <div class="row"><label>ID 4</label><input type="text" id="id3" value="火球鼠火焰"></div>
+            <div class="row"><label>ID 5</label><input type="text" id="id4" value="kirin_0v0"></div>
+            <div class="row"><label>指定勝者</label><select id="winner"></select></div>
+            <div class="row"><label>種子（可留空）</label><input type="number" id="seed" placeholder="留空 = 隨機"></div>
+            <div class="row"><label>開場方向</label>
+                <select id="dirMode"><option value="mixed">保證至少一對反向</option><option value="random">完全隨機</option><option value="alternate">奇偶交錯</option></select>
+            </div>
+            <div class="row"><label>音效</label><input type="checkbox" id="sound" checked></div>
+            <div class="row"><label>最後一擊鏡頭</label><input type="checkbox" id="finisherCam" checked>
+                <span style="font-size:.75rem;color:var(--sub)">放大＋慢動作（自然轉停不演）</span></div>
+            <div class="btns">
+                <button id="run">開始對戰</button>
+                <button id="replay" class="sec" disabled>重播同一場</button>
+                <button id="stat" class="sec">跑 300 局統計</button>
+                <button id="reset" class="sec">還原預設</button>
+            </div>
+            <pre id="out">尚未執行。</pre>
+        </div>
+    </div>
+
+    <div>
+        <div class="panel stage"><div id="arena"></div></div>
+        <div class="panel" style="margin-top:1rem">
+            <h2>參數調校</h2>
+            <fieldset><legend>時長與節奏</legend><div id="grp-time"></div></fieldset>
+            <fieldset><legend>運動與軌道</legend><div id="grp-move"></div></fieldset>
+            <fieldset><legend>碰撞與擊飛</legend><div id="grp-hit"></div></fieldset>
+            <fieldset><legend>最後一擊鏡頭（只影響播放，不影響結果）</legend><div id="grp-cam"></div></fieldset>
+        </div>
+    </div>
+</div>
+
+<script src="battle-arena.js"></script>
+<script>
+const SLIDERS = {
+    'grp-time': [
+        ['spinDecay','轉速衰減／秒',0.008,0.060,0.001],
+        ['targetMinMs','主要時長下限(ms)',5000,60000,1000],
+        ['targetMaxMs','主要時長上限(ms)',5000,60000,1000],
+        ['quickChance','快速決勝比例',0,1,0.02],
+        ['quickMinMs','快速決勝下限(ms)',3000,30000,1000],
+        ['countdownMs','開場倒數(ms)',0,5000,200],
+        ['celebrateMs','勝利演出(ms)',500,6000,200]
+    ],
+    'grp-move': [
+        ['bowlPull','向心回復力',0.3,3,0.05],
+        ['bowlPullFloor','虛弱時的抓地力',0.05,1,0.05],
+        ['driveSpeed','滿轉巡航速度',60,220,5],
+        ['driveSpinFloor','速度／轉速耦合下限',0.1,1,0.05],
+        ['driveVar','個體速度差異',0,0.4,0.02],
+        ['oppositeChance','逆向繞行機率',0,1,0.1],
+        ['wander','隨機擾動',0,25,1],
+        ['seekPull','進攻拉力（0 = 關閉）',0,4,0.1],
+        ['seekIdleSec','多久沒撞才開始追(秒)',0,5,0.25],
+        ['seekRampSec','追擊拉力爬升(秒)',0,3,0.25]
+    ],
+    'grp-hit': [
+        ['hitTangential','旋轉彈開力道',0.1,1.5,0.05],
+        ['impactCap','撞擊力道上限',50,300,10],
+        ['spinHitLoss','每次撞擊扣血',0.0001,0.002,0.00005],
+        ['minSepSpeed','撞擊後分離速度',5,80,5],
+        ['ringOutSpeed','擊飛門檻速度',20,140,5],
+        ['ringOutMaxSpin','可被擊飛的轉速上限',0.2,1,0.05],
+        ['hitCooldownFrames','撞擊冷卻(格)',2,40,1],
+        ['heavyImpact','重擊門檻(力道)',50,130,5],
+        ['dramaHeavy','挑場次：每次重擊加分',0,6,0.5]
+    ],
+    'grp-cam': [
+        ['camChance','觸發機率',0,1,0.05],
+        ['camSlow','慢動作倍率',0.1,1,0.05],
+        ['camZoom','放大倍率',1,3,0.1],
+        ['camPreSec','撞擊前慢動作(秒)',0,2,0.05],
+        ['camImpactSec','撞擊後慢動作(秒)',0,1,0.05],
+        ['camPostSec','出局後鏡頭停留(秒)',0,2,0.1],
+        ['camRampSec','進出過渡(秒)',0,1,0.05]
+    ]
+};
+const opts = Object.assign({}, BattleArena.DEFAULTS);
+const inputs = {};
+
+function buildSliders(){
+    for (const gid in SLIDERS){
+        const box = document.getElementById(gid);
+        box.innerHTML = '';
+        SLIDERS[gid].forEach(([key,label,min,max,step])=>{
+            const row=document.createElement('div'); row.className='row';
+            const l=document.createElement('label'); l.textContent=label;
+            const r=document.createElement('input'); r.type='range';
+            r.min=min; r.max=max; r.step=step; r.value=opts[key];
+            const v=document.createElement('span'); v.className='val'; v.textContent=opts[key];
+            r.oninput=()=>{
+                const num=parseFloat(r.value);
+                if(key==='spinDecay'){
+                    // 依人數的衰減表優先，所以要寫進當前人數的那一格
+                    const n=parseInt(document.getElementById('count').value,10);
+                    opts.spinDecayByCount=Object.assign({},opts.spinDecayByCount);
+                    opts.spinDecayByCount[n]=num;
+                }
+                opts[key]=num; v.textContent=r.value;
+            };
+            row.appendChild(l); row.appendChild(r); row.appendChild(v);
+            box.appendChild(row);
+            inputs[key]={range:r,val:v};
+        });
+    }
+}
+
+function entries(){
+    const n=parseInt(document.getElementById('count').value,10);
+    const list=[];
+    for(let i=0;i<n;i++){
+        const el=document.getElementById('id'+i);
+        list.push({ id:'p'+i, label:(el.value||('玩家'+(i+1))) });
+    }
+    return list;
+}
+function syncWinner(){
+    const sel=document.getElementById('winner');
+    const list=entries(); const keep=sel.value;
+    sel.innerHTML='';
+    list.forEach((e,i)=>{ const o=document.createElement('option'); o.value=e.id;
+        o.textContent=(i+1)+'. '+e.label; sel.appendChild(o); });
+    if([...sel.options].some(o=>o.value===keep)) sel.value=keep;
+}
+// 依人數的目標時長：人多時允許更長。
+// 必須跟著改 —— findSeed 用 targetMinMs/targetMaxMs 篩種子，不放寬的話
+// 播出長度會被夾回舊區間，改 spinDecay 完全看不出效果。
+// 數值取各人數實測分布的 p10~p90。
+const TARGET_BY_COUNT = {
+    2: [10000, 20000],
+    3: [10000, 20000],
+    4: [12000, 26000],
+    5: [16000, 34000]
+};
+document.getElementById('count').onchange=()=>{
+    syncWinner();
+    const n=parseInt(document.getElementById('count').value,10);
+    const cur=(opts.spinDecayByCount&&opts.spinDecayByCount[n]!=null)?opts.spinDecayByCount[n]:opts.spinDecay;
+    if(inputs.spinDecay){ inputs.spinDecay.range.value=cur; inputs.spinDecay.val.textContent=cur; }
+    const band=TARGET_BY_COUNT[n];
+    if(band){
+        [['targetMinMs',band[0]],['targetMaxMs',band[1]]].forEach(([k,v])=>{
+            opts[k]=v;
+            if(inputs[k]){ inputs[k].range.value=v; inputs[k].val.textContent=v; }
+        });
+    }
+};
+[0,1,2,3,4].forEach(i=>document.getElementById('id'+i).oninput=syncWinner);
+const dirSel=document.getElementById('dirMode');
+dirSel.onchange=()=>{ opts.dirMode=dirSel.value; };
+
+const out=document.getElementById('out');
+const camBox=document.getElementById('finisherCam');
+const replayBtn=document.getElementById('replay');
+let running=null;
+let last=null;   // 上一場：{ list, winnerId, seed }，給「重播同一場」用
+
+function play(list, winnerId, seedOpt, exactSeed){
+    if(running){ running.abort(); running=null; }
+    opts.sound=document.getElementById('sound').checked;
+    opts.finisherCam=camBox.checked;
+    const t0=performance.now();
+    out.textContent=exactSeed!=null?'重播中…':'搜尋種子中…';
+    running=BattleArena.start({
+        container:document.getElementById('arena'),
+        entries:list,
+        winnerId:winnerId,
+        seed: seedOpt,
+        exactSeed: exactSeed,
+        options:opts,
+        onFinish:(res)=>{
+            running=null;
+            out.textContent += '\n\n【結束】勝者 = ' + res.winnerId +
+                (res.aborted ? '（中止：'+res.reason+'）' : '');
+        }
+    });
+    if(running){
+        const i=running.info;
+        last={ list:list, winnerId:winnerId, seed:i.seed };
+        replayBtn.disabled=false;
+        const f=i.finisher;
+        out.textContent=(exactSeed!=null?'重播（未搜尋）':'搜尋耗時 '+(performance.now()-t0).toFixed(1)+'ms')+'\n'+
+            '種子 '+i.seed+(exactSeed!=null?'':'（試了 '+i.tried+' 個）')+'\n'+
+            '對戰時長 '+(i.durationMs/1000).toFixed(1)+' 秒\n'+
+            '類型 '+(i.exact?'符合偏好區間':'備案（區間內找不到）')+'\n'+
+            '最後一擊鏡頭 '+(!camBox.checked?'關閉':
+                f?('演出：'+list[f.index].label+' '+(f.type==='ringout'?'擊飛':'撞擊後轉停')+
+                  '，播放多約 '+(f.extraMs/1000).toFixed(1)+' 秒')
+                 :'不演（自然轉停，或沒抽中觸發機率）');
+    } else {
+        out.textContent='搜尋失敗：在時間上限內找不到讓指定勝者獲勝的種子。';
+    }
+}
+
+document.getElementById('run').onclick=()=>{
+    const seedEl=document.getElementById('seed');
+    play(entries(), document.getElementById('winner').value,
+        seedEl.value!=='' ? parseInt(seedEl.value,10) : undefined, undefined);
+};
+// 同一個種子、同一批人、同一位勝者 → 完全相同的對戰；切換鏡頭開關後按這裡比對
+replayBtn.onclick=()=>{
+    if(last) play(last.list, last.winnerId, undefined, last.seed);
+};
+
+document.getElementById('stat').onclick=()=>{
+    const n=parseInt(document.getElementById('count').value,10);
+    const trials=300;
+    const durs=[]; let ko=0,stall=0,clash=0,bad=0,noClash=0,heavy=0,impSum=0; const koT=[],gaps=[];
+    const t0=performance.now();
+    for(let k=0;k<trials;k++){
+        const r=BattleArena.simulate(n,opts,(k*2654435761)>>>0,false);
+        if(!r.ok){bad++;continue;}
+        durs.push(r.durationMs);
+        const ce=r.events.filter(e=>e.type==='clash');
+        const ct=ce.map(e=>e.frame/60);
+        clash+=ct.length;
+        heavy+=r.heavyHits;
+        ce.forEach(e=>{ impSum+=Math.min(e.impact,opts.impactCap); });
+        if(!ct.length) noClash++;
+        // 最長無碰撞空窗（含開場到第一撞、最後一撞到結束）
+        let prev=0,gap=0;
+        ct.concat([r.durationMs/1000]).forEach(t=>{ gap=Math.max(gap,t-prev); prev=t; });
+        gaps.push(gap);
+        r.deaths.forEach(d=>{ if(d.type==='ringout'){ko++;koT.push(d.frame/60);} else stall++; });
+    }
+    durs.sort((a,b)=>a-b);
+    gaps.sort((a,b)=>a-b);
+    const q=p=>durs.length?(durs[Math.floor(durs.length*p)]/1000).toFixed(1):'-';
+    const qg=p=>gaps.length?gaps[Math.floor(gaps.length*p)].toFixed(1):'-';
+    const band=(lo,hi)=>Math.round(durs.filter(d=>d>=lo&&d<hi).length/durs.length*100)+'%';
+    out.textContent=
+        '跑 '+trials+' 局（'+(performance.now()-t0).toFixed(0)+'ms）\n'+
+        '生效衰減：'+((opts.spinDecayByCount&&opts.spinDecayByCount[n]!=null)?opts.spinDecayByCount[n]:opts.spinDecay)+'\n'+
+        '無效局：'+bad+'\n'+
+        '時長  最短 '+q(0)+'s / 中位 '+q(0.5)+'s / 最長 '+q(0.99)+'s\n'+
+        '分布  <15s '+band(0,15000)+'  15-30s '+band(15000,30000)+
+        '  30-40s '+band(30000,40000)+'  >40s '+band(40000,1e9)+'\n'+
+        '敗因  擊飛 '+Math.round(ko/(ko+stall)*100)+'%  轉停 '+Math.round(stall/(ko+stall)*100)+'%\n'+
+        '擊飛平均發生在第 '+(koT.length?Math.round(koT.reduce((a,b)=>a+b,0)/koT.length):0)+' 秒\n'+
+        '平均撞擊次數 '+Math.round(clash/Math.max(1,durs.length))+' 次／局'+
+        '（完全沒撞到 '+Math.round(noClash/Math.max(1,durs.length)*100)+'%）\n'+
+        '重擊 '+(heavy/Math.max(1,durs.length)).toFixed(1)+' 次／局  平均撞擊力道 '+Math.round(impSum/Math.max(1,clash))+
+        '（上限 '+opts.impactCap+'）\n'+
+        '最長無碰撞空窗  中位 '+qg(0.5)+'s / p90 '+qg(0.9)+'s';
+};
+
+document.getElementById('reset').onclick=()=>{
+    Object.assign(opts, BattleArena.DEFAULTS);
+    dirSel.value=opts.dirMode;
+    camBox.checked=opts.finisherCam;
+    buildSliders();
+    out.textContent='已還原預設值。';
+};
+
+dirSel.value=opts.dirMode;
+buildSliders();
+syncWinner();
+</script>
+</body>
+</html>
