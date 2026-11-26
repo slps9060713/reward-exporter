@@ -1964,7 +1964,31 @@ function addTournamentCandidate(tabId, id) {
     tournamentCandidates[tabId].push({ id, item });
     winnersList.appendChild(copy);
     if (winnersSection) winnersSection.style.display = 'block';
+    refreshCandidateColors(tabId);
     checkAndUpdateLotteryButton(tabId);
+}
+
+// 在候選人編號後方標上開賽時的陀螺顏色。
+// BattleArena 依 entries 順序取 COLORS[i]，而開賽的 entries 就是遴選區的順序，
+// 所以有人被放回名單時順序會變，每次增減都要整批重算。
+function refreshCandidateColors(tabId) {
+    const winnersList = document.getElementById(`winners-list-${tabId}`);
+    if (!winnersList) return;
+    const colors = (typeof BattleArena !== 'undefined' && BattleArena.COLORS) || [];
+    (tournamentCandidates[tabId] || []).forEach((entry, i) => {
+        const copy = winnersList.querySelector(`.tournament-candidate[data-id="${entry.id}"]`);
+        if (!copy || colors.length === 0) return;
+        const main = copy.querySelector('.id-item-main') || copy;
+        let dot = main.querySelector('.candidate-color');
+        if (!dot) {
+            dot = document.createElement('span');
+            dot.className = 'candidate-color';
+            main.appendChild(dot);
+        }
+        const color = colors[i % colors.length];
+        dot.style.background = color;
+        dot.title = `陀螺顏色 ${color}`;
+    });
 }
 
 // 把一位候選人放回參與名單（依編號插回原位置），並移除淺灰複本
@@ -1994,6 +2018,7 @@ function removeTournamentCandidate(tabId, id) {
     const [entry] = list.splice(index, 1);
     if (list.length === 0) delete tournamentCandidates[tabId];
     restoreCandidateToPool(tabId, entry);
+    refreshCandidateColors(tabId);
     pieHoldResult = false;
     checkAndUpdateLotteryButton(tabId);
     updateWheelAreaUI(tabId);
@@ -2052,7 +2077,7 @@ function updateTournamentControls(tabId) {
     if (matchBtn) matchBtn.disabled = lotteryBusy || count < EXTREME_MIN_PLAYERS;
 }
 
-// 遴選：數字跳號（沿用啟動抽獎的 50 × 50ms 節奏）後直接揭曉，沒有縮圈。
+// 遴選：數字跳號（50ms 一格，總長為啟動抽獎的 2/3）後直接揭曉，沒有縮圈。
 // 被選中的人只進遴選區（淺灰），不寫入 drawnWinners / 右側中獎紀錄。
 let tournamentSelectToken = 0;   // 跳號期間遴選區被清空時遞增，讓這次遴選作廢
 
@@ -2086,7 +2111,7 @@ function selectTournamentCandidate(tabId) {
     const spinInterval = setInterval(() => {
         if (wheelNumber) wheelNumber.textContent = items[Math.floor(Math.random() * items.length)].dataset.id;
         count++;
-        if (count <= 50) return;
+        if (count <= 33) return;   // 34 格 ≈ 1.7 秒，為啟動抽獎（51 格 ≈ 2.55 秒）的 2/3
 
         clearInterval(spinInterval);
         stopSpinLoop();

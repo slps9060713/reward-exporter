@@ -279,6 +279,28 @@ test('select picks one candidate without shrink', async (b) => {
     assertEq(await b.evaluate(`!!document.getElementById('no-overlay-shrink-custom') && document.getElementById('no-overlay-shrink-custom').offsetParent !== null`), false, '不可出現縮圈');
     assertEq(s.pool.length, 7);
 });
+test('select roll is 2/3 of normal spin (~1.7s)', async (b) => {
+    await setupCustom(b, 8);
+    const t0 = Date.now();
+    await b.evaluate(`selectTournamentCandidate('custom')`);
+    await waitFor(b, `!lotteryBusy`, 5000);
+    const ms = Date.now() - t0;
+    assert(ms > 1500 && ms < 2200, '遴選跳號應約 1.7 秒，實際 ' + ms + 'ms');
+});
+test('candidate color dot matches arena order', async (b) => {
+    await setupCustom(b, 8);
+    await b.evaluate(`addTournamentCandidate('custom','002'); addTournamentCandidate('custom','005'); addTournamentCandidate('custom','007')`);
+    const read = () => b.evaluate(`Array.from(document.querySelectorAll('#winners-list-custom .tournament-candidate')).map(el => {
+        const d = el.querySelector('.id-item-main .candidate-color');
+        return el.dataset.id + ':' + (d ? d.style.background : '');
+    })`);
+    const toRgb = h => 'rgb(' + [1,3,5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ') + ')';
+    const C = (await b.evaluate(`BattleArena.COLORS`)).map(toRgb);
+    assertEq(await read(), ['002:' + C[0], '005:' + C[1], '007:' + C[2]]);
+    await b.evaluate(`removeTournamentCandidate('custom','002')`);
+    assertEq(await read(), ['005:' + C[0], '007:' + C[1]], '放回一人後顏色依新順序重算');
+    assertEq(await b.evaluate(`document.querySelectorAll('#id-list-custom .candidate-color').length`), 0, '回名單的原始元素不帶色點');
+});
 test('double click select adds one', async (b) => {
     await setupCustom(b, 8);
     await b.evaluate(`selectTournamentCandidate('custom'); selectTournamentCandidate('custom')`);
