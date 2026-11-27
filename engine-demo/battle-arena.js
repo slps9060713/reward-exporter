@@ -15,7 +15,7 @@
  *     entries: [{ id, label }, ...],          // 2~MAX_PLAYERS 人（目前 5）
  *     winnerId,                               // 預先決定的勝者 id
  *     options: {},                            // 可選，覆寫 DEFAULTS
- *     onEvent: (evt) => {},                   // 可選：clash / stall / ringout / win
+ *     onEvent: (evt) => {},                   // 可選：clash / wall / stall / ringout / win
  *     onFinish: ({ winnerId, durationMs }) => {}
  *   });
  *
@@ -120,7 +120,21 @@
         camPreSec: 0.3,         // 最後一擊前多久進入慢動作（模擬秒）
         camImpactSec: 0.15,     // 撞擊後慢動作再延續多久，之後以正常速度播到出局（模擬秒）
         camPostSec: 0.3,        // 出局後鏡頭再停留多久才拉回全景（模擬秒）
-        camRampSec: 0.2         // 進出慢動作／放大的過渡時間（模擬秒）
+        camRampSec: 0.2,        // 進出慢動作／放大的過渡時間（模擬秒）
+
+        // --- 撞牆／擊飛特效（純演出：只讀模擬事件，不影響模擬與結果）---
+        wallFx: true,           // 撞牆特效：牆面亮弧＋陀螺壓扁＋沿牆火花＋悶響
+        wallFxMin: 30,          // 撞牆徑向速度低於此值的輕擦不演（實測 p25 約 25～40）
+        wallFxMax: 130,         // 達到此值為最強（實測 p90 約 95～135）
+        wallFxGain: 1,          // 撞牆特效整體強度倍率
+        ringOutFx: true,        // 擊飛特效：破框閃光＋拖殘影飛出擂台外＋跳字
+        flySec: 0.9,            // 飛出動畫長度（模擬秒，慢動作時跟著變慢）
+        flyDist: 0.75,          // 飛行距離（擂台半徑的倍數）。被擊飛者在模擬中已不參與任何計算，
+                                // 所以飛行軌跡只是沿出場方向的視覺外推
+        flyShrink: 0.3,         // 飛到最後縮成原本的幾倍（遠去感）
+        outText: '淘汰',          // 擊飛時在破框點跳出的字（空字串 = 不顯示）
+        fxMargin: 90            // 特效層超出擂台的最大範圍（px），讓陀螺真的飛出擂台；
+                                // 實際值會依視窗剩餘空間縮小，避免產生橫向捲軸
     };
 
     // 顏色（高飽和、色相分得開，讓對撞更醒目）
@@ -400,6 +414,8 @@
                 if (t.spin < o.ringOutMaxSpin && vr > outThreshold) {
                     kill(i, 'ringout');                // 衝力夠大 → 飛出場外
                 } else {
+                    // 只記錄給演出用（撞牆特效），不參與任何計算
+                    events.push({ frame: f, type: 'wall', index: i, x: nx * wallR, y: ny * wallR, vr: vr });
                     const jn = (1 + o.wallBounce) * vr;
                     t.vx -= jn * nx; t.vy -= jn * ny;
                     t.x = nx * wallR; t.y = ny * wallR;
@@ -547,11 +563,12 @@
 
     // ==================== 內建音效（可關閉）====================
     function createSound(o) {
-        if (!o.sound) return { clash: noop, stall: noop, ringout: noop, win: noop, countdown: noop };
+        const silent = { clash: noop, wall: noop, stall: noop, ringout: noop, win: noop, countdown: noop };
+        if (!o.sound) return silent;
         let ctx = null;
         try {
             ctx = new (global.AudioContext || global.webkitAudioContext)();
-        } catch (e) { return { clash: noop, stall: noop, ringout: noop, win: noop, countdown: noop }; }
+        } catch (e) { return silent; }
 
         function tone(freq, dur, type, vol, slideTo) {
             if (!ctx) return;
@@ -596,6 +613,11 @@
                 tone(240 + 500 * s, 0.05 + 0.05 * s, 'square', 0.35 + 0.5 * s);
                 noise(0.05 + 0.06 * s, 0.25 + 0.4 * s);
             },
+            // 撞牆：低沉的「咚」，跟互撞的金屬聲分開
+            wall: (s) => {
+                tone(110 + 70 * s, 0.09 + 0.08 * s, 'triangle', 0.45 + 0.5 * s, 55);
+                noise(0.03 + 0.04 * s, 0.12 + 0.25 * s);
+            },
             stall: () => { tone(300, 0.5, 'sine', 0.7, 90); },
             ringout: () => { tone(700, 0.35, 'sawtooth', 0.8, 160); noise(0.18, 0.5); },
             win: () => {
@@ -617,6 +639,7 @@
             '.battle-arena-canvas{border-radius:50%;box-shadow:0 0 26px rgba(145,70,255,.35);',
             'transition:filter .5s ease;}',
             '.battle-arena-canvas.is-blurred{filter:blur(3px) brightness(.8);}',
+            '.battle-arena-fx{position:absolute;pointer-events:none;z-index:1;}',
             /* 擂台中央的插槽：呼叫端可以把自己的按鈕放進來 */
             '.battle-arena-overlay{position:absolute;inset:0;display:flex;flex-direction:column;',
             'align-items:center;justify-content:center;gap:.55rem;z-index:2;',
@@ -687,6 +710,12 @@
         canvas.className = 'battle-arena-canvas';
         stageEl.appendChild(canvas);
 
+        // 特效層：比擂台大一圈、不吃版面空間（絕對定位），讓陀螺可以真的飛出圓形擂台。
+        // 主畫布是圓形裁切（border-radius），飛出去的陀螺、破框閃光與跳字畫在這層。
+        const fxCanvas = document.createElement('canvas');
+        fxCanvas.className = 'battle-arena-fx';
+        stageEl.appendChild(fxCanvas);
+
         const overlay = document.createElement('div');
         overlay.className = 'battle-arena-overlay';
         const resultEl = document.createElement('div');
@@ -734,6 +763,34 @@
             drawArena(ctx, cx, cy, R, true);
         }
         drawIdle();
+
+        // 特效層尺寸：開打時才量（掛載當下容器可能還是 display:none）。
+        // 往外延伸的寬度不超過視窗左右剩餘空間，避免絕對定位撐出橫向捲軸
+        const fxCtx = fxCanvas.getContext('2d');
+        let fxM = 0;
+        function layoutFx() {
+            let m = o.fxMargin || 0;
+            // 先縮回 0 再量，避免上一次的特效層本身撐大了 scrollWidth
+            fxCanvas.style.width = '0px'; fxCanvas.style.height = '0px';
+            const de = (typeof document !== 'undefined') ? document.documentElement : null;
+            // 頁面本來就能橫向捲動時，延伸到既有可捲動範圍內不會多出捲軸
+            const vw = de ? Math.max(de.clientWidth, de.scrollWidth) : 0;
+            const rect = stageEl.getBoundingClientRect();
+            if (vw && rect.width) {
+                const sx = global.scrollX || 0;
+                m = Math.min(m, Math.floor(Math.min(rect.left + sx, vw - (rect.right + sx))) - 4);
+            }
+            fxM = Math.max(0, m);
+            const fs = size + fxM * 2;
+            fxCanvas.width = fs * dpr; fxCanvas.height = fs * dpr;
+            fxCanvas.style.width = fs + 'px'; fxCanvas.style.height = fs + 'px';
+            fxCanvas.style.left = (-fxM) + 'px'; fxCanvas.style.top = (-fxM) + 'px';
+        }
+        function clearFx() {
+            fxCtx.setTransform(1, 0, 0, 1, 0, 0);
+            fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+        }
+        layoutFx();
 
         let raf = 0;
         let state = 'idle';
@@ -785,6 +842,27 @@
                 const onFinish = runCfg.onFinish || noop;
                 const onEvent = runCfg.onEvent || noop;
                 const sparks = [];
+                const flashes = [];      // 牆面亮弧（撞牆／破框）
+                const rings = [];        // 衝擊波圓環
+                const popups = [];       // 跳字（淘汰）
+                const squash = new Array(n).fill(null);   // 撞牆壓扁：{ t, s, ang }
+                // 擊飛的飛行路線：從出場點沿當下速度方向直線外推（被擊飛者已不參與模擬）
+                const fly = new Array(n).fill(null);
+                run.deaths.forEach(d => {
+                    if (d.type !== 'ringout') return;
+                    const ev = run.events.find(e => e.type === 'ringout' && e.index === d.index);
+                    const x0 = ev ? ev.x : frameAtRaw(d.frame, d.index, 0);
+                    const y0 = ev ? ev.y : frameAtRaw(d.frame, d.index, 1);
+                    let vx = frameAtRaw(d.frame + 1, d.index, 0) - frameAtRaw(d.frame, d.index, 0);
+                    let vy = frameAtRaw(d.frame + 1, d.index, 1) - frameAtRaw(d.frame, d.index, 1);
+                    let vl = Math.hypot(vx, vy);
+                    // 飛行方向偏向徑向外側，避免沿著牆切線滑出去看起來像沒飛出去
+                    const rl = Math.hypot(x0, y0) || 1;
+                    if (vl < 1e-6) { vx = x0 / rl; vy = y0 / rl; vl = 1; }
+                    vx = vx / vl * 0.55 + x0 / rl * 0.45; vy = vy / vl * 0.55 + y0 / rl * 0.45;
+                    vl = Math.hypot(vx, vy) || 1;
+                    fly[d.index] = { frame: d.frame, x0: x0, y0: y0, dx: vx / vl, dy: vy / vl };
+                });
                 const angles = new Array(n).fill(0);
                 let shake = 0, nextEvent = 0, celebrated = false, done = false;
                 let lastCountdownStep = -1;   // 已經響過的倒數格（3 = 起跑那一聲）
@@ -793,22 +871,27 @@
                 let simMs = 0, lastT = null, celebrateT0 = null;
 
                 state = 'battle';
+                layoutFx();
+                clearFx();
                 setBlur(false);
                 setOverlayVisible(false);
                 resultEl.textContent = '';
                 rows.forEach(r => { r.row.classList.remove('is-out', 'is-winner'); r.tag.textContent = ''; });
                 skipBtn.classList.remove('is-hidden');
 
-                const frameAt = (idx, i, k) => {
+                // 函式宣告（會提升），上面預先計算飛行路線時就要用到
+                function frameAtRaw(idx, i, k) {
                     const c = Math.max(0, Math.min(run.totalFrames - 1, idx));
                     return run.frames[c * n * STRIDE + i * STRIDE + k];
-                };
+                }
+                const frameAt = frameAtRaw;
 
                 function finish(skipped) {
                     if (done) return;
                     done = true;
                     global.cancelAnimationFrame(raf);
                     state = 'result';
+                    clearFx();
                     skipBtn.classList.add('is-hidden');
                     // 收尾畫面：勝者定格 → 模糊 → 按鈕與勝者文字回來
                     const wi = run.winnerIndex;
@@ -853,13 +936,15 @@
                         battleMs = simMs;
                     }
 
-                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                    ctx.clearRect(0, 0, size, size);
+                    // 鏡頭（震動＋最後一擊放大）：主畫布與特效層套用同一個轉換
+                    let shX = 0, shY = 0;
                     if (shake > 0.2) {
-                        ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+                        shX = (Math.random() - 0.5) * shake;
+                        shY = (Math.random() - 0.5) * shake;
                         shake *= Math.pow(0.86, rate);
                     }
-                    // 鏡頭：放大並把焦點（被淘汰的陀螺）拉向畫面中央
+                    // 放大並把焦點（被淘汰的陀螺）拉向畫面中央
+                    let camS = 1, camX = 0, camY = 0, camOn = false;
                     if (battleMs >= 0 && fin) {
                         const fp = battleMs / 1000 * o.fps;
                         const amt = windowAmount(fin.zoom, o, fp);
@@ -867,12 +952,25 @@
                             let fx = lerpPos(fp, fin.index, 0), fy = lerpPos(fp, fin.index, 1);
                             const fd = Math.hypot(fx, fy);
                             if (fd > o.arenaR) { fx *= o.arenaR / fd; fy *= o.arenaR / fd; }
-                            const s = 1 + (o.camZoom - 1) * amt;
-                            ctx.translate(cx, cy);
-                            ctx.scale(s, s);
-                            ctx.translate(-(cx + fx * scale * amt), -(cy + fy * scale * amt));
+                            camOn = true;
+                            camS = 1 + (o.camZoom - 1) * amt;
+                            camX = fx * scale * amt; camY = fy * scale * amt;
                         }
                     }
+                    const applyCam = (c, off) => {
+                        c.setTransform(dpr, 0, 0, dpr, 0, 0);
+                        c.translate(off + shX, off + shY);
+                        if (camOn) {
+                            c.translate(cx, cy);
+                            c.scale(camS, camS);
+                            c.translate(-(cx + camX), -(cy + camY));
+                        }
+                    };
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    ctx.clearRect(0, 0, size, size);
+                    clearFx();
+                    applyCam(ctx, 0);
+                    applyCam(fxCtx, fxM);
                     drawArena(ctx, cx, cy, R, battleMs < 0);
 
                     if (battleMs < 0) {
@@ -908,16 +1006,59 @@
                             sound.stall();
                             rows[e.index].tag.textContent = '轉停';
                             rows[e.index].row.classList.add('is-out');
+                        } else if (e.type === 'wall') {
+                            if (o.wallFx && e.vr >= o.wallFxMin) {
+                                // 撞牆：依撞擊的徑向速度分級（太輕的擦牆不演）
+                                const s = Math.min(1, (e.vr - o.wallFxMin) / Math.max(1, o.wallFxMax - o.wallFxMin));
+                                const g = o.wallFxGain;
+                                const ang = Math.atan2(e.y, e.x);
+                                const col = entries[e.index].color;
+                                const px = cx + Math.cos(ang) * R, py = cy + Math.sin(ang) * R;
+                                flashes.push({ ang: ang, life: 1, decay: 0.05,
+                                    w: (0.16 + 0.26 * s) * g, th: (2.5 + 5 * s) * g, color: col });
+                                squash[e.index] = { t: e.frame / o.fps, s: Math.min(1, (0.35 + 0.65 * s) * g), ang: ang };
+                                spawnWallSparks(sparks, px, py, ang, col, s, g);
+                                if (s > 0.3) rings.push({ x: px, y: py, life: 1, decay: 0.07,
+                                    r0: o.topR * scale * 0.5, r1: o.topR * scale * (1.4 + 1.6 * s) * g, color: col });
+                                if (s > 0.2) shake = Math.max(shake, (1 + 4 * s) * g);
+                                sound.wall(s);
+                            }
                         } else if (e.type === 'ringout') {
                             sound.ringout();
-                            shake = Math.max(shake, 6);
+                            shake = Math.max(shake, o.ringOutFx ? 9 : 6);
                             rows[e.index].tag.textContent = '擊飛';
                             rows[e.index].row.classList.add('is-out');
+                            if (o.ringOutFx) {
+                                // 破框：大亮弧＋衝擊波＋朝飛出方向噴發的火花＋跳字
+                                const ang = Math.atan2(e.y, e.x);
+                                const col = entries[e.index].color;
+                                const px = cx + Math.cos(ang) * R, py = cy + Math.sin(ang) * R;
+                                const F = fly[e.index];
+                                flashes.push({ ang: ang, life: 1, decay: 0.03, w: 0.5, th: 10, color: col });
+                                rings.push({ x: px, y: py, life: 1, decay: 0.04,
+                                    r0: 4, r1: o.topR * scale * 4.2, color: '#ffffff' });
+                                spawnBurst(sparks, px, py, F ? Math.atan2(F.dy, F.dx) : ang, col);
+                                if (o.outText) {
+                                    const inR = R - o.topR * scale * 2.4;
+                                    popups.push({ x: cx + Math.cos(ang) * inR, y: cy + Math.sin(ang) * inR,
+                                        life: 1, text: o.outText, color: col });
+                                }
+                            }
                         }
                         onEvent(e);
                     }
 
+                    updateFlashes(fxCtx, flashes, cx, cy, R, rate);
+                    updateRings(fxCtx, rings, rate);
+                    const simSec = battleMs / 1000;
                     for (let i = 0; i < n; i++) {
+                        const F = o.ringOutFx ? fly[i] : null;
+                        if (F && fpos >= F.frame) {
+                            // 擊飛：畫在特效層，沿出場方向飛出擂台外並縮小遠去
+                            angles[i] += 0.6 * rate;
+                            drawFlyer(fxCtx, F, i, (fpos - F.frame) / o.fps / o.flySec);
+                            continue;
+                        }
                         const st = frameAt(i0, i, 3);
                         if (st === GONE) continue;
                         const x = frameAt(i0, i, 0) + (frameAt(i0 + 1, i, 0) - frameAt(i0, i, 0)) * frac;
@@ -925,11 +1066,48 @@
                         const spin = frameAt(i0, i, 2);
                         angles[i] += (0.12 + spin * 0.75) * rate;
                         const d = run.deaths.find(z => z.index === i);
+                        // 撞牆壓扁：先沿法線壓扁、再回彈拉長，約 0.22 秒（模擬時間）
+                        let ex = null;
+                        const q = squash[i];
+                        if (q && st === ALIVE) {
+                            const k = (simSec - q.t) / 0.22;
+                            if (k >= 1) squash[i] = null;
+                            else if (k >= 0) ex = { sq: { a: 0.3 * q.s * (1 - k) * Math.cos(k * Math.PI * 2), ang: q.ang } };
+                        }
                         drawTop(ctx, cx + x * scale, cy + y * scale, o.topR * scale,
                             entries[i].color, spin, angles[i], st,
-                            d ? (fpos - d.frame) / o.fps : 0, battleMs / 1000);
+                            d ? (fpos - d.frame) / o.fps : 0, simSec, ex);
                     }
-                    updateSparks(ctx, sparks, rate);
+                    updateSparks(fxCtx, sparks, rate);
+                    updatePopups(fxCtx, popups, rate);
+
+                    function drawFlyer(c, F, i, p) {
+                        if (p < 0 || p >= 1) return;
+                        const dist = o.flyDist * o.arenaR;
+                        const ease = qq => 1 - (1 - qq) * (1 - qq);        // 起飛最快，越飛越慢（遠去）
+                        const posX = qq => cx + (F.x0 + F.dx * dist * ease(qq)) * scale;
+                        const posY = qq => cy + (F.y0 + F.dy * dist * ease(qq)) * scale;
+                        // 先被打得彈起來（放大），再縮小遠去
+                        const sc = qq => qq < 0.12 ? 1 + 0.3 * (qq / 0.12)
+                            : 1.3 - (1.3 - o.flyShrink) * Math.min(1, (qq - 0.12) / 0.88);
+                        const alpha = p < 0.6 ? 1 : 1 - (p - 0.6) / 0.4;
+                        const r = o.topR * scale;
+                        // 殘影
+                        c.save();
+                        c.globalCompositeOperation = 'lighter';
+                        c.fillStyle = entries[i].color;
+                        for (let k = 6; k >= 1; k--) {
+                            const qq = p - k * 0.035;
+                            if (qq < 0) continue;
+                            c.globalAlpha = alpha * 0.45 * (1 - k / 7);
+                            c.beginPath();
+                            c.arc(posX(qq), posY(qq), r * sc(qq) * 0.9, 0, Math.PI * 2);
+                            c.fill();
+                        }
+                        c.restore();
+                        drawTop(c, posX(p), posY(p), r, entries[i].color, 0, angles[i], FLYING, 0, 0,
+                            { fly: { scale: sc(p), alpha: alpha, lift: Math.min(1, p * 2.5) } });
+                    }
 
                     // 勝利演出等鏡頭回到正常才開始，計時用真實時間（不受慢動作拉長）
                     if (battleMs >= run.durationMs && (!fin || battleMs >= finEndMs)) {
@@ -1035,10 +1213,18 @@
         ctx.restore();
     }
 
-    function drawTop(ctx, x, y, r, color, spin, angle, state, sinceDeath, t) {
+    // ex（可選）：{ sq: { a, ang } } 撞牆壓扁；{ fly: { scale, alpha, lift } } 擊飛飛行中
+    function drawTop(ctx, x, y, r, color, spin, angle, state, sinceDeath, t, ex) {
         ctx.save();
+        let shadowLift = 0;
 
-        if (state === STALLED) {
+        if (state === FLYING && ex && ex.fly) {
+            // 擊飛特效：彈起後縮小遠去，影子留在地面越拉越遠、越來越淡
+            ctx.globalAlpha = Math.max(0, ex.fly.alpha);
+            ctx.translate(x, y);
+            ctx.scale(ex.fly.scale, ex.fly.scale);
+            shadowLift = ex.fly.lift;
+        } else if (state === STALLED) {
             // 轉停：搖晃後倒下並淡出
             const p = Math.min(1, sinceDeath / 0.9);
             ctx.globalAlpha = 1 - p;
@@ -1053,12 +1239,18 @@
             // 轉速低時晃動，表示快沒力了
             const wob = spin < 0.28 ? (0.28 - spin) * 26 : 0;
             ctx.translate(x + Math.sin(t * 22) * wob, y + Math.cos(t * 19) * wob * 0.6);
+            if (ex && ex.sq && ex.sq.a) {
+                // 撞牆壓扁：沿牆的法線方向壓扁（a < 0 時為回彈拉長）
+                ctx.rotate(ex.sq.ang);
+                ctx.scale(1 - ex.sq.a, 1 + ex.sq.a * 0.5);
+                ctx.rotate(-ex.sq.ang);
+            }
         }
 
         // 陰影
         ctx.beginPath();
-        ctx.ellipse(0, r * 0.55, r * 0.9, r * 0.32, 0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.fill();
+        ctx.ellipse(0, r * (0.55 + shadowLift * 1.4), r * 0.9, r * 0.32, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,' + (0.42 * (1 - shadowLift * 0.8)).toFixed(3) + ')'; ctx.fill();
 
         // 本體
         ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -1118,6 +1310,107 @@
                 vx: Math.cos(a) * s, vy: Math.sin(a) * s,
                 life: 1, color: Math.random() < 0.5 ? c1 : c2
             });
+        }
+    }
+
+    // 撞牆火花：從接觸點沿牆面兩側噴出、略往場內
+    function spawnWallSparks(list, x, y, ang, color, s, g) {
+        const count = Math.max(2, Math.round((3 + 9 * s) * g));
+        for (let k = 0; k < count; k++) {
+            const side = (k % 2) ? 1 : -1;
+            const a = ang + side * (Math.PI / 2 + 0.12 + Math.random() * 0.5);
+            const sp = 50 + Math.random() * (70 + 200 * s);
+            list.push({
+                x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+                life: 0.75 + 0.25 * s, color: Math.random() < 0.55 ? color : '#ffd98a'
+            });
+        }
+    }
+
+    // 擊飛破框：朝飛出方向的錐狀噴發，再加一圈較慢的碎屑
+    function spawnBurst(list, x, y, dir, color) {
+        for (let k = 0; k < 26; k++) {
+            const a = dir + (Math.random() - 0.5) * 1.3;
+            const sp = 120 + Math.random() * 300;
+            list.push({ x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+                life: 1, color: Math.random() < 0.5 ? color : '#fff3c4' });
+        }
+        for (let k = 0; k < 10; k++) {
+            const a = Math.random() * Math.PI * 2;
+            const sp = 40 + Math.random() * 90;
+            list.push({ x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.8, color: color });
+        }
+    }
+
+    // 牆面亮弧：在接觸角度亮起一段擂台邊框，往兩側擴散後淡出
+    function updateFlashes(ctx, list, cx, cy, R, rate) {
+        const r = rate == null ? 1 : rate;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        for (let k = list.length - 1; k >= 0; k--) {
+            const f = list[k];
+            f.life -= (f.decay || 0.05) * r;
+            if (f.life <= 0) { list.splice(k, 1); continue; }
+            const spread = f.w * (1 + (1 - f.life) * 0.9);
+            // 外暈
+            ctx.globalAlpha = f.life * 0.35;
+            ctx.beginPath(); ctx.arc(cx, cy, R, f.ang - spread, f.ang + spread);
+            ctx.strokeStyle = f.color; ctx.lineWidth = f.th * 2.6; ctx.stroke();
+            // 本體
+            ctx.globalAlpha = f.life;
+            ctx.beginPath(); ctx.arc(cx, cy, R, f.ang - spread, f.ang + spread);
+            ctx.lineWidth = f.th * (0.6 + 0.4 * f.life) + 2; ctx.stroke();
+            // 白色亮芯
+            ctx.beginPath(); ctx.arc(cx, cy, R, f.ang - spread * 0.6, f.ang + spread * 0.6);
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, f.th * 0.4 * f.life); ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // 衝擊波圓環
+    function updateRings(ctx, list, rate) {
+        const r = rate == null ? 1 : rate;
+        ctx.save();
+        for (let k = list.length - 1; k >= 0; k--) {
+            const g = list[k];
+            g.life -= (g.decay || 0.06) * r;
+            if (g.life <= 0) { list.splice(k, 1); continue; }
+            const e = 1 - g.life;
+            ctx.globalAlpha = g.life * 0.8;
+            ctx.beginPath();
+            ctx.arc(g.x, g.y, g.r0 + (g.r1 - g.r0) * (1 - (1 - e) * (1 - e)), 0, Math.PI * 2);
+            ctx.strokeStyle = g.color; ctx.lineWidth = 0.5 + 3 * g.life; ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // 跳字（淘汰）：彈出放大 → 回穩 → 往上飄並淡出
+    function updatePopups(ctx, list, rate) {
+        const r = rate == null ? 1 : rate;
+        for (let k = list.length - 1; k >= 0; k--) {
+            const p = list[k];
+            p.life -= 0.02 * r;
+            if (p.life <= 0) { list.splice(k, 1); continue; }
+            const age = 1 - p.life;
+            const s = age < 0.12 ? 0.4 + 0.95 * (age / 0.12)
+                : age < 0.22 ? 1.35 - 0.35 * ((age - 0.12) / 0.1) : 1;
+            ctx.save();
+            ctx.globalAlpha = p.life < 0.35 ? p.life / 0.35 : 1;
+            ctx.translate(p.x, p.y - 14 * age);
+            ctx.scale(s, s);
+            ctx.font = '900 30px system-ui, sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+            ctx.strokeText(p.text, 0, 0);
+            ctx.shadowColor = p.color; ctx.shadowBlur = 14;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(p.text, 0, 0);
+            ctx.shadowBlur = 0;
+            ctx.lineWidth = 1.5; ctx.strokeStyle = p.color;
+            ctx.strokeText(p.text, 0, 0);
+            ctx.restore();
         }
     }
 

@@ -70,6 +70,12 @@
             <fieldset><legend>時長與節奏</legend><div id="grp-time"></div></fieldset>
             <fieldset><legend>運動與軌道</legend><div id="grp-move"></div></fieldset>
             <fieldset><legend>碰撞與擊飛</legend><div id="grp-hit"></div></fieldset>
+            <fieldset><legend>撞牆與擊飛特效（純演出，不影響勝負）</legend>
+                <div class="row"><label>撞牆特效</label><input type="checkbox" id="wallFx" checked></div>
+                <div class="row"><label>擊飛特效</label><input type="checkbox" id="ringOutFx" checked></div>
+                <div class="row"><label>擊飛跳字</label><input type="text" id="outText" placeholder="留空 = 不顯示"></div>
+                <div id="grp-fx"></div>
+            </fieldset>
         </div>
     </div>
 </div>
@@ -108,6 +114,15 @@ const SLIDERS = {
         ['hitCooldownFrames','撞擊冷卻(格)',2,40,1],
         ['heavyImpact','重擊門檻(力道)',50,130,5],
         ['dramaHeavy','挑場次：每次重擊加分',0,6,0.5]
+    ],
+    'grp-fx': [
+        ['wallFxMin','撞牆：低於此速度不演',0,120,5],
+        ['wallFxMax','撞牆：達此速度最強',40,250,5],
+        ['wallFxGain','撞牆：整體強度',0.2,3,0.1],
+        ['flySec','擊飛：飛行秒數',0.3,2.5,0.1],
+        ['flyDist','擊飛：飛行距離(×擂台半徑)',0.2,2,0.05],
+        ['flyShrink','擊飛：最後縮成幾倍',0.05,1,0.05],
+        ['fxMargin','特效層外擴上限(px)',0,200,10]
     ]
 };
 const opts = Object.assign({}, BattleArena.DEFAULTS);
@@ -183,6 +198,14 @@ document.getElementById('count').onchange=()=>{
 [0,1,2,3,4].forEach(i=>document.getElementById('id'+i).oninput=syncWinner);
 const dirSel=document.getElementById('dirMode');
 dirSel.onchange=()=>{ opts.dirMode=dirSel.value; };
+// 特效開關與跳字
+const fxChecks=['wallFx','ringOutFx'];
+function syncFxInputs(){
+    fxChecks.forEach(k=>{ document.getElementById(k).checked=!!opts[k]; });
+    document.getElementById('outText').value=opts.outText||'';
+}
+fxChecks.forEach(k=>{ document.getElementById(k).onchange=e=>{ opts[k]=e.target.checked; }; });
+document.getElementById('outText').oninput=e=>{ opts.outText=e.target.value; };
 
 const out=document.getElementById('out');
 let running=null;
@@ -264,11 +287,13 @@ document.getElementById('reset').onclick=()=>{
     Object.assign(opts, BattleArena.DEFAULTS);
     dirSel.value=opts.dirMode;
     buildSliders();
+    syncFxInputs();
     out.textContent='已還原預設值。';
 };
 
 dirSel.value=opts.dirMode;
 buildSliders();
+syncFxInputs();
 syncWinner();
 </script>
 </body>
